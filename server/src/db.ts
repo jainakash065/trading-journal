@@ -5,12 +5,16 @@ import { backfillExitRMultiples } from "./repository";
 export function createDatabase(): Database.Database {
   ensureDataFolders();
   const db: Database.Database = new Database(dbPath);
+  initializeDatabase(db);
+  return db;
+}
+
+export function initializeDatabase(db: Database.Database): void {
   db.pragma("journal_mode = WAL");
   db.pragma("foreign_keys = ON");
   migrate(db);
   seed(db);
   backfillExitRMultiples(db);
-  return db;
 }
 
 function migrate(db: Database.Database): void {

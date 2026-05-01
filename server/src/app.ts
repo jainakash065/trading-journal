@@ -9,6 +9,8 @@ import { entryScreenshotDir, exitScreenshotDir } from "./paths";
 import {
   addExit,
   createTrade,
+  deleteExit,
+  deleteTrade,
   getCurrentCapital,
   getReview,
   getSettings,
@@ -146,6 +148,14 @@ export function createApp(): express.Express {
   app.post("/api/trades/:id/exits", (request: Request, response: Response) => {
     const id = addExit(db, { tradeId: Number(request.params.id), ...exitSchema.parse(request.body) });
     response.status(201).json({ id });
+  });
+  app.delete("/api/trades/:id", (request: Request, response: Response) => {
+    deleteTrade(db, Number(request.params.id));
+    response.json({ ok: true });
+  });
+  app.delete("/api/trades/:id/exits/:exitId", (request: Request, response: Response) => {
+    deleteExit(db, { tradeId: Number(request.params.id), exitId: Number(request.params.exitId) });
+    response.json({ ok: true });
   });
   app.put("/api/trades/:id/review", (request: Request, response: Response) => {
     updateReview(db, Number(request.params.id), reviewSchema.parse(request.body));

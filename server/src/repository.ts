@@ -1,4 +1,5 @@
 import type Database from "better-sqlite3";
+import fs from "node:fs";
 import { calculateExitPnl, calculateExitRMultiple, summarizeTrade } from "./calculations";
 import type { ExitRow, ReviewRow, ScreenshotRow, TradeRow } from "./types";
 
@@ -197,6 +198,48 @@ export function backfillExitRMultiples(db: Database.Database): void {
   transaction();
 }
 
+export function deleteTrade(db: Database.Database, tradeId: number): void {
+  const filePaths: readonly string[] = getScreenshotFilePaths(db, "trade_id = ?", [tradeId]);
+  const transaction = db.transaction((): void => {
+    const trade: TradeRow | undefined = getTrade(db, tradeId);
+    if (!trade) {
+      throw new Error("Trade not found");
+    }
+    db.prepare("DELETE FROM capital_ledger WHERE trade_id = ?").run(tradeId);
+    db.prepare("DELETE FROM screenshots WHERE trade_id = ?").run(tradeId);
+    db.prepare("DELETE FROM trade_mistakes WHERE trade_id = ?").run(tradeId);
+    db.prepare("DELETE FROM trade_reviews WHERE trade_id = ?").run(tradeId);
+    db.prepare("DELETE FROM trade_checklist_responses WHERE trade_id = ?").run(tradeId);
+    db.prepare("DELETE FROM trade_exits WHERE trade_id = ?").run(tradeId);
+    db.prepare("DELETE FROM trades WHERE id = ?").run(tradeId);
+  });
+  transaction();
+  deleteFiles(filePaths);
+}
+
+export function deleteExit(db: Database.Database, params: {
+  readonly tradeId: number;
+  readonly exitId: number;
+}): void {
+  const filePaths: readonly string[] = getScreenshotFilePaths(db, "trade_id = ? AND exit_id = ?", [params.tradeId, params.exitId]);
+  const transaction = db.transaction((): void => {
+    const trade: TradeRow | undefined = getTrade(db, params.tradeId);
+    if (!trade) {
+      throw new Error("Trade not found");
+    }
+    const result = db.prepare("DELETE FROM trade_exits WHERE id = ? AND trade_id = ?").run(params.exitId, params.tradeId);
+    if (result.changes === 0) {
+      throw new Error("Exit not found");
+    }
+    db.prepare("DELETE FROM capital_ledger WHERE trade_id = ? AND exit_id = ?").run(params.tradeId, params.exitId);
+    db.prepare("DELETE FROM screenshots WHERE trade_id = ? AND exit_id = ?").run(params.tradeId, params.exitId);
+    const updatedSummary = summarizeTrade(trade, listExits(db, params.tradeId));
+    db.prepare("UPDATE trades SET status = ? WHERE id = ?").run(updatedSummary.status, params.tradeId);
+  });
+  transaction();
+  deleteFiles(filePaths);
+}
+
 export function saveScreenshot(db: Database.Database, input: {
   readonly tradeId: number;
   readonly exitId: number | null;
@@ -206,6 +249,27 @@ export function saveScreenshot(db: Database.Database, input: {
 }): void {
   db.prepare("INSERT INTO screenshots (trade_id, exit_id, type, file_path, original_name) VALUES (?, ?, ?, ?, ?)")
     .run(input.tradeId, input.exitId, input.type, input.filePath, input.originalName);
+}
+
+function getScreenshotFilePaths(db: Database.Database, whereClause: string, values: readonly number[]): readonly string[] {
+  const rows = db.prepare(`SELECT file_path AS filePath FROM screenshots WHERE ${whereClause}`).all(...values) as { readonly filePath: string }[];
+  return rows.map((row: { readonly filePath: string }) => row.filePath);
+}
+
+function deleteFiles(filePaths: readonly string[]): void {
+  filePaths.forEach((filePath: string) => {
+    try {
+      fs.unlinkSync(filePath);
+    } catch (error: unknown) {
+      if (!isMissingFileError(error)) {
+        console.warn(`Unable to delete screenshot file: ${filePath}`);
+      }
+    }
+  });
+}
+
+function isMissingFileError(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "code" in error && (error as { readonly code?: unknown }).code === "ENOENT";
 }
 
 export function listScreenshots(db: Database.Database, tradeId: number): readonly ScreenshotRow[] {

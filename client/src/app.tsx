@@ -1,6 +1,6 @@
-import { Activity, BarChart3, BookOpen, ClipboardCheck, IndianRupee, Plus, Settings as SettingsIcon } from "lucide-react";
+import { Activity, BarChart3, BookOpen, ClipboardCheck, IndianRupee, Plus, Settings as SettingsIcon, Trash2 } from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
-import { apiGet, apiSend, endpoints, type AppData, type ReferenceData, uploadScreenshot } from "./api";
+import { apiDelete, apiGet, apiSend, endpoints, type AppData, type ReferenceData, uploadScreenshot } from "./api";
 import type { Dashboard, Settings, Trade, TradeExit } from "./types";
 
 type View = "dashboard" | "new" | "open" | "closed" | "settings";
@@ -51,7 +51,7 @@ export function App(): JSX.Element {
         {view === "closed" ? <TradesView title="Closed Trades" trades={data.closedTrades} onSelect={setSelectedTradeId} /> : null}
         {view === "settings" ? <SettingsView data={data} onSaved={reload} /> : null}
       </section>
-      {selectedTradeId ? <TradeDetail tradeId={selectedTradeId} referenceData={data.referenceData} onClose={() => setSelectedTradeId(null)} onChanged={reload} /> : null}
+      {selectedTradeId ? <TradeDetail tradeId={selectedTradeId} referenceData={data.referenceData} onClose={() => setSelectedTradeId(null)} onChanged={reload} onDeleted={async () => { setSelectedTradeId(null); await reload(); setMessage("Trade deleted"); }} /> : null}
     </main>
   );
 }
@@ -190,7 +190,7 @@ function TradesView(props: { readonly title: string; readonly trades: readonly T
   );
 }
 
-function TradeDetail(props: { readonly tradeId: number; readonly referenceData: ReferenceData; readonly onClose: () => void; readonly onChanged: () => Promise<void> }): JSX.Element {
+function TradeDetail(props: { readonly tradeId: number; readonly referenceData: ReferenceData; readonly onClose: () => void; readonly onChanged: () => Promise<void>; readonly onDeleted: () => Promise<void> }): JSX.Element {
   const [detail, setDetail] = useState<{ readonly trade: Trade; readonly exits: readonly TradeExit[]; readonly summary: Trade["summary"]; readonly screenshots: readonly { readonly id: number; readonly type: string; readonly url: string; readonly exitId: number | null }[]; readonly review?: Record<string, string | number> } | null>(null);
   const [exitFile, setExitFile] = useState<File | null>(null);
   const [exitForm, setExitForm] = useState({ exitDate: today, exitPrice: "", quantity: "", reason: "", emotionalState: "", notes: "" });
@@ -220,9 +220,27 @@ function TradeDetail(props: { readonly tradeId: number; readonly referenceData: 
     await load();
     await props.onChanged();
   };
+  const deleteTrade = async (): Promise<void> => {
+    if (!window.confirm(`Delete ${detail.trade.symbol} and all of its exits, screenshots, and review data?`)) {
+      return;
+    }
+    await apiDelete(`/api/trades/${props.tradeId}`);
+    await props.onDeleted();
+  };
+  const deleteExit = async (exitId: number): Promise<void> => {
+    if (!window.confirm("Delete this exit and its screenshot/capital impact?")) {
+      return;
+    }
+    await apiDelete(`/api/trades/${props.tradeId}/exits/${exitId}`);
+    await load();
+    await props.onChanged();
+  };
   return (
     <aside className="drawer">
-      <button className="ghost" onClick={props.onClose} type="button">Close</button>
+      <div className="drawer-actions">
+        <button className="ghost" onClick={props.onClose} type="button">Close</button>
+        <button className="danger" onClick={deleteTrade} type="button"><Trash2 size={16} /> Delete Trade</button>
+      </div>
       <h2>{detail.trade.symbol}</h2>
       <p className="muted">{detail.trade.entryDate} · {detail.trade.setupName ?? "No setup"} · {detail.summary.status.replace("_", " ")}</p>
       <div className="two-col">
@@ -243,7 +261,13 @@ function TradeDetail(props: { readonly tradeId: number; readonly referenceData: 
       </form>
       <section>
         <h3>Exits</h3>
-        {detail.exits.map((exit) => <div className="row" key={exit.id}><span>{exit.exitDate} · {exit.quantity} @ {money(exit.exitPrice)}</span><strong>{money(exit.pnl)} · {exit.rMultiple}R</strong></div>)}
+        {detail.exits.map((exit) => (
+          <div className="row exit-row" key={exit.id}>
+            <span>{exit.exitDate} · {exit.quantity} @ {money(exit.exitPrice)}</span>
+            <strong>{money(exit.pnl)} · {exit.rMultiple}R</strong>
+            <button aria-label={`Delete exit ${exit.exitDate}`} className="icon-danger" onClick={() => deleteExit(exit.id)} type="button"><Trash2 size={16} /></button>
+          </div>
+        ))}
       </section>
       <form className="compact-form" onSubmit={reviewSubmit}>
         <h3>Review</h3>

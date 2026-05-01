@@ -20,6 +20,11 @@ export async function apiSend<T>(path: string, method: "POST" | "PUT", body: unk
   return parseResponse<T>(response);
 }
 
+export async function apiDelete(path: string): Promise<void> {
+  const response: Response = await fetch(path, { method: "DELETE" });
+  await parseResponse<{ readonly ok: boolean }>(response);
+}
+
 export async function uploadScreenshot(path: string, file: File): Promise<void> {
   const body: FormData = new FormData();
   body.append("screenshot", file);

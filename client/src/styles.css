@@ -140,6 +140,10 @@ nav {
   padding: 10px 0;
 }
 
+.exit-row {
+  gap: 10px;
+}
+
 .form-grid {
   display: grid;
   gap: 14px;
@@ -206,7 +210,7 @@ textarea {
   min-height: auto;
 }
 
-.primary, .secondary, .ghost {
+.primary, .secondary, .ghost, .danger, .icon-danger {
   border: 0;
   border-radius: 8px;
   cursor: pointer;
@@ -229,6 +233,25 @@ textarea {
 .ghost {
   background: #eef0ed;
   color: #122620;
+}
+
+.danger {
+  align-items: center;
+  background: #bb3e2d;
+  color: #ffffff;
+  display: inline-flex;
+  gap: 8px;
+  justify-content: center;
+}
+
+.icon-danger {
+  align-items: center;
+  background: #f5e3df;
+  color: #9f2d20;
+  display: inline-flex;
+  justify-content: center;
+  min-height: 34px;
+  padding: 8px;
 }
 
 .table {
@@ -284,6 +307,12 @@ small {
   top: 0;
   width: min(560px, 96vw);
   z-index: 10;
+}
+
+.drawer-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
 }
 
 .compact-form {

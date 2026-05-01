@@ -39,6 +39,10 @@ type ExitFormState = {
 
 type ReviewSaveStatus = "idle" | "saving" | "saved" | "error";
 
+function createEmptyExitForm(): ExitFormState {
+  return { exitDate: today, exitPrice: "", quantity: "", reason: "", emotionalState: "", notes: "" };
+}
+
 export function App(): JSX.Element {
   const [view, setView] = useState<View>("dashboard");
   const [data, setData] = useState<AppData | null>(null);
@@ -151,6 +155,7 @@ function NewTradeView(props: { readonly data: AppData; readonly onSaved: () => P
   });
   const [checks, setChecks] = useState<Record<number, boolean>>({});
   const [file, setFile] = useState<File | null>(null);
+  const [saving, setSaving] = useState(false);
   const riskAmount = Number(form.riskCapitalBase) * (Number(form.riskPercentage) / 100);
   const riskPerShare = Math.max(Number(form.entryPrice) - Number(form.stopLoss), 0);
   const suggestedQuantity = riskPerShare > 0 ? Math.floor(riskAmount / riskPerShare) : 0;
@@ -158,27 +163,35 @@ function NewTradeView(props: { readonly data: AppData; readonly onSaved: () => P
   const riskUsedPercentage = riskAmount > 0 ? (actualRisk / riskAmount) * 100 : 0;
   const submit = async (event: FormEvent): Promise<void> => {
     event.preventDefault();
-    const response = await apiSend<{ readonly id: number }>("/api/trades", "POST", {
-      symbol: form.symbol,
-      market: "India",
-      direction: "Buy",
-      entryDate: form.entryDate,
-      entryPrice: Number(form.entryPrice),
-      quantity: Number(form.quantity || suggestedQuantity),
-      stopLoss: Number(form.stopLoss),
-      riskPercentage: Number(form.riskPercentage),
-      riskCapitalBase: Number(form.riskCapitalBase),
-      setupId: form.setupId ? Number(form.setupId) : null,
-      entryReason: form.entryReason,
-      emotionalState: form.emotionalState,
-      confidence: Number(form.confidence),
-      notes: form.notes,
-      checklistResponses: props.data.referenceData.checklistItems.map((item) => ({ itemId: item.id, checked: Boolean(checks[item.id]), notes: "" }))
-    });
-    if (file) {
-      await uploadScreenshot(`/api/trades/${response.id}/screenshots/entry`, file);
+    if (saving) {
+      return;
     }
-    await props.onSaved();
+    setSaving(true);
+    try {
+      const response = await apiSend<{ readonly id: number }>("/api/trades", "POST", {
+        symbol: form.symbol,
+        market: "India",
+        direction: "Buy",
+        entryDate: form.entryDate,
+        entryPrice: Number(form.entryPrice),
+        quantity: Number(form.quantity || suggestedQuantity),
+        stopLoss: Number(form.stopLoss),
+        riskPercentage: Number(form.riskPercentage),
+        riskCapitalBase: Number(form.riskCapitalBase),
+        setupId: form.setupId ? Number(form.setupId) : null,
+        entryReason: form.entryReason,
+        emotionalState: form.emotionalState,
+        confidence: Number(form.confidence),
+        notes: form.notes,
+        checklistResponses: props.data.referenceData.checklistItems.map((item) => ({ itemId: item.id, checked: Boolean(checks[item.id]), notes: "" }))
+      });
+      if (file) {
+        await uploadScreenshot(`/api/trades/${response.id}/screenshots/entry`, file);
+      }
+      await props.onSaved();
+    } finally {
+      setSaving(false);
+    }
   };
   return (
     <>
@@ -211,7 +224,7 @@ function NewTradeView(props: { readonly data: AppData; readonly onSaved: () => P
             <label className="check-row" key={item.id}><input checked={Boolean(checks[item.id])} type="checkbox" onChange={(event) => setChecks({ ...checks, [item.id]: event.target.checked })} />{item.label}</label>
           ))}
         </section>
-        <button className="primary wide" type="submit">Save Trade</button>
+        <button className="primary wide" disabled={saving} type="submit">{saving ? "Saving..." : "Save Trade"}</button>
       </form>
     </>
   );
@@ -243,14 +256,18 @@ function TradesView(props: { readonly title: string; readonly trades: readonly T
 function TradeDetail(props: { readonly tradeId: number; readonly referenceData: ReferenceData; readonly onClose: () => void; readonly onChanged: () => Promise<void>; readonly onDeleted: () => Promise<void> }): JSX.Element {
   const [detail, setDetail] = useState<{ readonly trade: Trade; readonly exits: readonly TradeExit[]; readonly summary: Trade["summary"]; readonly screenshots: readonly { readonly id: number; readonly type: string; readonly url: string; readonly exitId: number | null }[]; readonly checklistResponses: readonly { readonly itemId: number; readonly checked: boolean; readonly notes: string }[]; readonly review?: Record<string, string | number> } | null>(null);
   const [exitFile, setExitFile] = useState<File | null>(null);
-  const [exitForm, setExitForm] = useState({ exitDate: today, exitPrice: "", quantity: "", reason: "", emotionalState: "", notes: "" });
+  const [exitFileInputKey, setExitFileInputKey] = useState(0);
+  const [exitForm, setExitForm] = useState<ExitFormState>(createEmptyExitForm);
+  const [addExitSaving, setAddExitSaving] = useState(false);
   const [editTradeOpen, setEditTradeOpen] = useState(false);
   const [editTradeFile, setEditTradeFile] = useState<File | null>(null);
   const [editTradeForm, setEditTradeForm] = useState<TradeFormState | null>(null);
+  const [editTradeSaving, setEditTradeSaving] = useState(false);
   const [editTradeChecks, setEditTradeChecks] = useState<Record<number, boolean>>({});
   const [editingExitId, setEditingExitId] = useState<number | null>(null);
   const [editExitFile, setEditExitFile] = useState<File | null>(null);
   const [editExitForm, setEditExitForm] = useState<ExitFormState | null>(null);
+  const [editExitSaving, setEditExitSaving] = useState(false);
   const [review, setReview] = useState({ followedPlan: "1", ruleScore: "5", disciplineScore: "5", wentWell: "", wentWrong: "", lesson: "", repeatNextTime: "", avoidNextTime: "", mistakeIds: [] as number[] });
   const [reviewSaveStatus, setReviewSaveStatus] = useState<ReviewSaveStatus>("idle");
   const [reviewSaveMessage, setReviewSaveMessage] = useState("");
@@ -294,12 +311,23 @@ function TradeDetail(props: { readonly tradeId: number; readonly referenceData: 
   }
   const addExitSubmit = async (event: FormEvent): Promise<void> => {
     event.preventDefault();
-    const response = await apiSend<{ readonly id: number }>(`/api/trades/${props.tradeId}/exits`, "POST", { ...exitForm, exitPrice: Number(exitForm.exitPrice), quantity: Number(exitForm.quantity) });
-    if (exitFile) {
-      await uploadScreenshot(`/api/trades/${props.tradeId}/exits/${response.id}/screenshots`, exitFile);
+    if (addExitSaving) {
+      return;
     }
-    await load();
-    await props.onChanged();
+    setAddExitSaving(true);
+    try {
+      const response = await apiSend<{ readonly id: number }>(`/api/trades/${props.tradeId}/exits`, "POST", { ...exitForm, exitPrice: Number(exitForm.exitPrice), quantity: Number(exitForm.quantity) });
+      if (exitFile) {
+        await uploadScreenshot(`/api/trades/${props.tradeId}/exits/${response.id}/screenshots`, exitFile);
+      }
+      setExitForm(createEmptyExitForm());
+      setExitFile(null);
+      setExitFileInputKey((key: number) => key + 1);
+      await load();
+      await props.onChanged();
+    } finally {
+      setAddExitSaving(false);
+    }
   };
   const openTradeEditor = (): void => {
     setEditTradeForm({
@@ -325,33 +353,38 @@ function TradeDetail(props: { readonly tradeId: number; readonly referenceData: 
   };
   const editTradeSubmit = async (event: FormEvent): Promise<void> => {
     event.preventDefault();
-    if (!editTradeForm) {
+    if (!editTradeForm || editTradeSaving) {
       return;
     }
-    await apiSend(`/api/trades/${props.tradeId}`, "PUT", {
-      symbol: editTradeForm.symbol,
-      market: editTradeForm.market,
-      direction: editTradeForm.direction,
-      entryDate: editTradeForm.entryDate,
-      entryPrice: Number(editTradeForm.entryPrice),
-      quantity: Number(editTradeForm.quantity),
-      stopLoss: Number(editTradeForm.stopLoss),
-      riskPercentage: Number(editTradeForm.riskPercentage),
-      riskCapitalBase: Number(editTradeForm.riskCapitalBase),
-      setupId: editTradeForm.setupId ? Number(editTradeForm.setupId) : null,
-      entryReason: editTradeForm.entryReason,
-      emotionalState: editTradeForm.emotionalState,
-      confidence: Number(editTradeForm.confidence),
-      notes: editTradeForm.notes,
-      checklistResponses: props.referenceData.checklistItems.map((item) => ({ itemId: item.id, checked: Boolean(editTradeChecks[item.id]), notes: "" }))
-    });
-    if (editTradeFile) {
-      await uploadScreenshot(`/api/trades/${props.tradeId}/screenshots/entry`, editTradeFile);
+    setEditTradeSaving(true);
+    try {
+      await apiSend(`/api/trades/${props.tradeId}`, "PUT", {
+        symbol: editTradeForm.symbol,
+        market: editTradeForm.market,
+        direction: editTradeForm.direction,
+        entryDate: editTradeForm.entryDate,
+        entryPrice: Number(editTradeForm.entryPrice),
+        quantity: Number(editTradeForm.quantity),
+        stopLoss: Number(editTradeForm.stopLoss),
+        riskPercentage: Number(editTradeForm.riskPercentage),
+        riskCapitalBase: Number(editTradeForm.riskCapitalBase),
+        setupId: editTradeForm.setupId ? Number(editTradeForm.setupId) : null,
+        entryReason: editTradeForm.entryReason,
+        emotionalState: editTradeForm.emotionalState,
+        confidence: Number(editTradeForm.confidence),
+        notes: editTradeForm.notes,
+        checklistResponses: props.referenceData.checklistItems.map((item) => ({ itemId: item.id, checked: Boolean(editTradeChecks[item.id]), notes: "" }))
+      });
+      if (editTradeFile) {
+        await uploadScreenshot(`/api/trades/${props.tradeId}/screenshots/entry`, editTradeFile);
+      }
+      setEditTradeOpen(false);
+      setEditTradeFile(null);
+      await load();
+      await props.onChanged();
+    } finally {
+      setEditTradeSaving(false);
     }
-    setEditTradeOpen(false);
-    setEditTradeFile(null);
-    await load();
-    await props.onChanged();
   };
   const openExitEditor = (exit: TradeExit): void => {
     setEditingExitId(exit.id);
@@ -367,17 +400,22 @@ function TradeDetail(props: { readonly tradeId: number; readonly referenceData: 
   };
   const editExitSubmit = async (event: FormEvent): Promise<void> => {
     event.preventDefault();
-    if (!editExitForm || editingExitId === null) {
+    if (!editExitForm || editingExitId === null || editExitSaving) {
       return;
     }
-    await apiSend(`/api/trades/${props.tradeId}/exits/${editingExitId}`, "PUT", { ...editExitForm, exitPrice: Number(editExitForm.exitPrice), quantity: Number(editExitForm.quantity) });
-    if (editExitFile) {
-      await uploadScreenshot(`/api/trades/${props.tradeId}/exits/${editingExitId}/screenshots`, editExitFile);
+    setEditExitSaving(true);
+    try {
+      await apiSend(`/api/trades/${props.tradeId}/exits/${editingExitId}`, "PUT", { ...editExitForm, exitPrice: Number(editExitForm.exitPrice), quantity: Number(editExitForm.quantity) });
+      if (editExitFile) {
+        await uploadScreenshot(`/api/trades/${props.tradeId}/exits/${editingExitId}/screenshots`, editExitFile);
+      }
+      setEditingExitId(null);
+      setEditExitFile(null);
+      await load();
+      await props.onChanged();
+    } finally {
+      setEditExitSaving(false);
     }
-    setEditingExitId(null);
-    setEditExitFile(null);
-    await load();
-    await props.onChanged();
   };
   const reviewSubmit = async (event: FormEvent): Promise<void> => {
     event.preventDefault();
@@ -469,7 +507,7 @@ function TradeDetail(props: { readonly tradeId: number; readonly referenceData: 
           <label><span>Notes</span><textarea value={editTradeForm.notes} onChange={(event) => setEditTradeForm({ ...editTradeForm, notes: event.target.value })} /></label>
           <label><span>Append entry screenshot</span><input type="file" accept="image/*" onChange={(event) => setEditTradeFile(event.target.files?.[0] ?? null)} /></label>
           <div className="checklist">{props.referenceData.checklistItems.map((item) => <label className="check-row" key={item.id}><input checked={Boolean(editTradeChecks[item.id])} type="checkbox" onChange={(event) => setEditTradeChecks({ ...editTradeChecks, [item.id]: event.target.checked })} />{item.label}</label>)}</div>
-          <div className="form-actions"><button className="primary" type="submit">Save Trade Changes</button><button className="ghost" type="button" onClick={() => setEditTradeOpen(false)}>Cancel</button></div>
+          <div className="form-actions"><button className="primary" disabled={editTradeSaving} type="submit">{editTradeSaving ? "Saving..." : "Save Trade Changes"}</button><button className="ghost" type="button" onClick={() => setEditTradeOpen(false)}>Cancel</button></div>
         </form>
       ) : null}
       <form className="compact-form" onSubmit={addExitSubmit}>
@@ -478,8 +516,8 @@ function TradeDetail(props: { readonly tradeId: number; readonly referenceData: 
         <Input label="Exit price" type="number" value={exitForm.exitPrice} onChange={(value) => setExitForm({ ...exitForm, exitPrice: value })} />
         <Input label="Quantity" type="number" value={exitForm.quantity} onChange={(value) => setExitForm({ ...exitForm, quantity: value })} />
         <Input label="Reason" value={exitForm.reason} onChange={(value) => setExitForm({ ...exitForm, reason: value })} />
-        <label><span>Exit screenshot</span><input type="file" accept="image/*" onChange={(event) => setExitFile(event.target.files?.[0] ?? null)} /></label>
-        <button className="primary" type="submit">Save Exit</button>
+        <label><span>Exit screenshot</span><input key={exitFileInputKey} type="file" accept="image/*" onChange={(event) => setExitFile(event.target.files?.[0] ?? null)} /></label>
+        <button className="primary" disabled={addExitSaving} type="submit">{addExitSaving ? "Saving..." : "Save Exit"}</button>
       </form>
       <section>
         <h3>Exits</h3>
@@ -502,7 +540,7 @@ function TradeDetail(props: { readonly tradeId: number; readonly referenceData: 
           <label><span>Emotional state</span><textarea value={editExitForm.emotionalState} onChange={(event) => setEditExitForm({ ...editExitForm, emotionalState: event.target.value })} /></label>
           <label><span>Notes</span><textarea value={editExitForm.notes} onChange={(event) => setEditExitForm({ ...editExitForm, notes: event.target.value })} /></label>
           <label><span>Append exit screenshot</span><input type="file" accept="image/*" onChange={(event) => setEditExitFile(event.target.files?.[0] ?? null)} /></label>
-          <div className="form-actions"><button className="primary" type="submit">Save Exit Changes</button><button className="ghost" type="button" onClick={() => setEditingExitId(null)}>Cancel</button></div>
+          <div className="form-actions"><button className="primary" disabled={editExitSaving} type="submit">{editExitSaving ? "Saving..." : "Save Exit Changes"}</button><button className="ghost" type="button" onClick={() => setEditingExitId(null)}>Cancel</button></div>
         </form>
       ) : null}
       <form className="compact-form" onSubmit={reviewSubmit}>

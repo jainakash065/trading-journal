@@ -10,6 +10,40 @@ type ListItem = {
   readonly active: number;
 };
 
+type ChecklistResponseInput = {
+  readonly itemId: number;
+  readonly checked: boolean;
+  readonly notes: string;
+};
+
+type TradeInput = {
+  readonly symbol: string;
+  readonly market: string;
+  readonly direction: string;
+  readonly entryDate: string;
+  readonly entryPrice: number;
+  readonly quantity: number;
+  readonly stopLoss: number;
+  readonly riskPercentage: number;
+  readonly plannedRiskAmount: number;
+  readonly setupId: number | null;
+  readonly entryReason: string;
+  readonly emotionalState: string;
+  readonly confidence: number;
+  readonly notes: string;
+  readonly checklistResponses: readonly ChecklistResponseInput[];
+};
+
+type ExitInput = {
+  readonly tradeId: number;
+  readonly exitDate: string;
+  readonly exitPrice: number;
+  readonly quantity: number;
+  readonly reason: string;
+  readonly emotionalState: string;
+  readonly notes: string;
+};
+
 export function getSettings(db: Database.Database): Record<string, string> {
   const rows: readonly { key: string; value: string }[] = db.prepare("SELECT key, value FROM settings").all() as { key: string; value: string }[];
   return Object.fromEntries(rows.map((row: { key: string; value: string }) => [row.key, row.value]));
@@ -52,23 +86,7 @@ export function upsertListItem(db: Database.Database, table: string, value: stri
   return listMistakeTags(db);
 }
 
-export function createTrade(db: Database.Database, input: {
-  readonly symbol: string;
-  readonly market: string;
-  readonly direction: string;
-  readonly entryDate: string;
-  readonly entryPrice: number;
-  readonly quantity: number;
-  readonly stopLoss: number;
-  readonly riskPercentage: number;
-  readonly plannedRiskAmount: number;
-  readonly setupId: number | null;
-  readonly entryReason: string;
-  readonly emotionalState: string;
-  readonly confidence: number;
-  readonly notes: string;
-  readonly checklistResponses: readonly { readonly itemId: number; readonly checked: boolean; readonly notes: string }[];
-}): number {
+export function createTrade(db: Database.Database, input: TradeInput): number {
   const transaction = db.transaction((): number => {
     const result = db.prepare(`
       INSERT INTO trades (
@@ -97,6 +115,48 @@ export function createTrade(db: Database.Database, input: {
     return tradeId;
   });
   return transaction();
+}
+
+export function updateTrade(db: Database.Database, tradeId: number, input: TradeInput): void {
+  const transaction = db.transaction((): void => {
+    const trade: TradeRow | undefined = getTrade(db, tradeId);
+    if (!trade) {
+      throw new Error("Trade not found");
+    }
+    const exits: readonly ExitRow[] = listExits(db, tradeId);
+    const exitedQuantity: number = exits.reduce((total: number, exit: ExitRow) => total + exit.quantity, 0);
+    if (input.quantity < exitedQuantity) {
+      throw new Error("Trade quantity cannot be lower than exited quantity");
+    }
+    db.prepare(`
+      UPDATE trades SET
+        symbol = ?, market = ?, direction = ?, entry_date = ?, entry_price = ?, quantity = ?,
+        stop_loss = ?, risk_percentage = ?, planned_risk_amount = ?, setup_id = ?,
+        entry_reason = ?, emotional_state = ?, confidence = ?, notes = ?
+      WHERE id = ?
+    `).run(
+      input.symbol.toUpperCase(),
+      input.market,
+      input.direction,
+      input.entryDate,
+      input.entryPrice,
+      input.quantity,
+      input.stopLoss,
+      input.riskPercentage,
+      input.plannedRiskAmount,
+      input.setupId,
+      input.entryReason,
+      input.emotionalState,
+      input.confidence,
+      input.notes,
+      tradeId
+    );
+    replaceChecklistResponses(db, tradeId, input.checklistResponses);
+    const updatedTrade: TradeRow = getRequiredTrade(db, tradeId);
+    recalculateExitsAndLedger(db, updatedTrade, exits);
+    updateTradeStatus(db, updatedTrade);
+  });
+  transaction();
 }
 
 export function listTrades(db: Database.Database, closed: boolean): readonly TradeRow[] {
@@ -137,15 +197,7 @@ export function listExits(db: Database.Database, tradeId: number): readonly Exit
   `).all(tradeId) as ExitRow[];
 }
 
-export function addExit(db: Database.Database, input: {
-  readonly tradeId: number;
-  readonly exitDate: string;
-  readonly exitPrice: number;
-  readonly quantity: number;
-  readonly reason: string;
-  readonly emotionalState: string;
-  readonly notes: string;
-}): number {
+export function addExit(db: Database.Database, input: ExitInput): number {
   const transaction = db.transaction((): number => {
     const trade: TradeRow | undefined = getTrade(db, input.tradeId);
     if (!trade) {
@@ -175,6 +227,40 @@ export function addExit(db: Database.Database, input: {
     return exitId;
   });
   return transaction();
+}
+
+export function updateExit(db: Database.Database, params: {
+  readonly tradeId: number;
+  readonly exitId: number;
+  readonly input: Omit<ExitInput, "tradeId">;
+}): void {
+  const transaction = db.transaction((): void => {
+    const trade: TradeRow = getRequiredTrade(db, params.tradeId);
+    const otherExitedQuantity: number = listExits(db, params.tradeId)
+      .filter((exit: ExitRow) => exit.id !== params.exitId)
+      .reduce((total: number, exit: ExitRow) => total + exit.quantity, 0);
+    if (params.input.quantity <= 0 || otherExitedQuantity + params.input.quantity > trade.quantity) {
+      throw new Error("Exit quantity must be within remaining quantity");
+    }
+    const pnl: number = calculateExitPnl(trade.entryPrice, params.input.exitPrice, params.input.quantity);
+    const rMultiple: number = calculateExitRMultiple({
+      pnl,
+      tradeQuantity: trade.quantity,
+      entryPrice: trade.entryPrice,
+      stopLoss: trade.stopLoss
+    });
+    const result = db.prepare(`
+      UPDATE trade_exits SET exit_date = ?, exit_price = ?, quantity = ?, reason = ?,
+        emotional_state = ?, notes = ?, pnl = ?, r_multiple = ?
+      WHERE id = ? AND trade_id = ?
+    `).run(params.input.exitDate, params.input.exitPrice, params.input.quantity, params.input.reason, params.input.emotionalState, params.input.notes, pnl, rMultiple, params.exitId, params.tradeId);
+    if (result.changes === 0) {
+      throw new Error("Exit not found");
+    }
+    upsertLedgerForExit(db, { trade, exitId: params.exitId, exitDate: params.input.exitDate, quantity: params.input.quantity, pnl });
+    updateTradeStatus(db, trade);
+  });
+  transaction();
 }
 
 export function backfillExitRMultiples(db: Database.Database): void {
@@ -281,6 +367,16 @@ export function listScreenshots(db: Database.Database, tradeId: number): readonl
   `).all(tradeId) as ScreenshotRow[];
 }
 
+export function listChecklistResponses(db: Database.Database, tradeId: number): readonly { readonly itemId: number; readonly checked: boolean; readonly notes: string }[] {
+  const rows = db.prepare(`
+    SELECT item_id AS itemId, checked, notes
+    FROM trade_checklist_responses
+    WHERE trade_id = ?
+    ORDER BY item_id
+  `).all(tradeId) as { readonly itemId: number; readonly checked: number; readonly notes: string }[];
+  return rows.map((row) => ({ itemId: row.itemId, checked: row.checked === 1, notes: row.notes }));
+}
+
 export function getReview(db: Database.Database, tradeId: number): ReviewRow | undefined {
   return db.prepare(`
     SELECT trade_id AS tradeId, followed_plan AS followedPlan, rule_score AS ruleScore,
@@ -313,4 +409,54 @@ export function updateReview(db: Database.Database, tradeId: number, input: Omit
     input.mistakeIds.forEach((mistakeId: number) => insertMistake.run(tradeId, mistakeId));
   });
   transaction();
+}
+
+function getRequiredTrade(db: Database.Database, tradeId: number): TradeRow {
+  const trade: TradeRow | undefined = getTrade(db, tradeId);
+  if (!trade) {
+    throw new Error("Trade not found");
+  }
+  return trade;
+}
+
+function replaceChecklistResponses(db: Database.Database, tradeId: number, responses: readonly ChecklistResponseInput[]): void {
+  db.prepare("DELETE FROM trade_checklist_responses WHERE trade_id = ?").run(tradeId);
+  const insertChecklist = db.prepare("INSERT INTO trade_checklist_responses (trade_id, item_id, checked, notes) VALUES (?, ?, ?, ?)");
+  responses.forEach((response: ChecklistResponseInput) => insertChecklist.run(tradeId, response.itemId, response.checked ? 1 : 0, response.notes));
+}
+
+function recalculateExitsAndLedger(db: Database.Database, trade: TradeRow, exits: readonly ExitRow[]): void {
+  exits.forEach((exit: ExitRow) => {
+    const pnl: number = calculateExitPnl(trade.entryPrice, exit.exitPrice, exit.quantity);
+    const rMultiple: number = calculateExitRMultiple({
+      pnl,
+      tradeQuantity: trade.quantity,
+      entryPrice: trade.entryPrice,
+      stopLoss: trade.stopLoss
+    });
+    db.prepare("UPDATE trade_exits SET pnl = ?, r_multiple = ? WHERE id = ?").run(pnl, rMultiple, exit.id);
+    upsertLedgerForExit(db, { trade, exitId: exit.id, exitDate: exit.exitDate, quantity: exit.quantity, pnl });
+  });
+}
+
+function upsertLedgerForExit(db: Database.Database, params: {
+  readonly trade: TradeRow;
+  readonly exitId: number;
+  readonly exitDate: string;
+  readonly quantity: number;
+  readonly pnl: number;
+}): void {
+  const result = db.prepare(`
+    UPDATE capital_ledger SET entry_date = ?, amount = ?, notes = ?
+    WHERE trade_id = ? AND exit_id = ?
+  `).run(params.exitDate, params.pnl, `Exit ${params.quantity} shares of ${params.trade.symbol}`, params.trade.id, params.exitId);
+  if (result.changes === 0) {
+    db.prepare("INSERT INTO capital_ledger (entry_date, type, amount, trade_id, exit_id, notes) VALUES (?, 'realized_pnl', ?, ?, ?, ?)")
+      .run(params.exitDate, params.pnl, params.trade.id, params.exitId, `Exit ${params.quantity} shares of ${params.trade.symbol}`);
+  }
+}
+
+function updateTradeStatus(db: Database.Database, trade: TradeRow): void {
+  const updatedSummary = summarizeTrade(trade, listExits(db, trade.id));
+  db.prepare("UPDATE trades SET status = ? WHERE id = ?").run(updatedSummary.status, trade.id);
 }

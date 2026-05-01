@@ -16,14 +16,17 @@ import {
   getSettings,
   getTrade,
   listChecklistItems,
+  listChecklistResponses,
   listExits,
   listMistakeTags,
   listScreenshots,
   listSetups,
   listTrades,
   saveScreenshot,
+  updateExit,
   updateReview,
   updateSettings,
+  updateTrade,
   upsertListItem
 } from "./repository";
 import { calculateSuggestedQuantity, summarizeTrade } from "./calculations";
@@ -142,12 +145,21 @@ export function createApp(): express.Express {
         ...screenshot,
         url: `/uploads/${screenshot.type === "entry" ? "entries" : "exits"}/${path.basename(screenshot.filePath)}`
       })),
+      checklistResponses: listChecklistResponses(db, tradeId),
       review: getReview(db, tradeId)
     });
+  });
+  app.put("/api/trades/:id", (request: Request, response: Response) => {
+    updateTrade(db, Number(request.params.id), tradeSchema.parse(request.body));
+    response.json({ ok: true });
   });
   app.post("/api/trades/:id/exits", (request: Request, response: Response) => {
     const id = addExit(db, { tradeId: Number(request.params.id), ...exitSchema.parse(request.body) });
     response.status(201).json({ id });
+  });
+  app.put("/api/trades/:id/exits/:exitId", (request: Request, response: Response) => {
+    updateExit(db, { tradeId: Number(request.params.id), exitId: Number(request.params.exitId), input: exitSchema.parse(request.body) });
+    response.json({ ok: true });
   });
   app.delete("/api/trades/:id", (request: Request, response: Response) => {
     deleteTrade(db, Number(request.params.id));

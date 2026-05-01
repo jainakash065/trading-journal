@@ -158,7 +158,7 @@ export function addExit(db: Database.Database, input: {
     const pnl: number = calculateExitPnl(trade.entryPrice, input.exitPrice, input.quantity);
     const rMultiple: number = calculateExitRMultiple({
       pnl,
-      exitQuantity: input.quantity,
+      tradeQuantity: trade.quantity,
       entryPrice: trade.entryPrice,
       stopLoss: trade.stopLoss
     });
@@ -178,16 +178,16 @@ export function addExit(db: Database.Database, input: {
 
 export function backfillExitRMultiples(db: Database.Database): void {
   const rows = db.prepare(`
-    SELECT e.id, e.pnl, e.quantity, t.entry_price AS entryPrice, t.stop_loss AS stopLoss
+    SELECT e.id, e.pnl, t.quantity AS tradeQuantity, t.entry_price AS entryPrice, t.stop_loss AS stopLoss
     FROM trade_exits e
     JOIN trades t ON t.id = e.trade_id
-  `).all() as { readonly id: number; readonly pnl: number; readonly quantity: number; readonly entryPrice: number; readonly stopLoss: number }[];
+  `).all() as { readonly id: number; readonly pnl: number; readonly tradeQuantity: number; readonly entryPrice: number; readonly stopLoss: number }[];
   const update = db.prepare("UPDATE trade_exits SET r_multiple = ? WHERE id = ?");
   const transaction = db.transaction((): void => {
     rows.forEach((row) => {
       const rMultiple: number = calculateExitRMultiple({
         pnl: row.pnl,
-        exitQuantity: row.quantity,
+        tradeQuantity: row.tradeQuantity,
         entryPrice: row.entryPrice,
         stopLoss: row.stopLoss
       });

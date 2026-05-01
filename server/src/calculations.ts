@@ -41,19 +41,19 @@ export function calculateExitPnl(entryPrice: number, exitPrice: number, quantity
 
 export function calculateExitRMultiple(params: {
   readonly pnl: number;
-  readonly exitQuantity: number;
+  readonly tradeQuantity: number;
   readonly entryPrice: number;
   readonly stopLoss: number;
 }): number {
-  const exitRisk: number = calculateActualTradeRisk({
+  const tradeRisk: number = calculateActualTradeRisk({
     entryPrice: params.entryPrice,
     stopLoss: params.stopLoss,
-    quantity: params.exitQuantity
+    quantity: params.tradeQuantity
   });
-  if (exitRisk <= 0) {
+  if (tradeRisk <= 0) {
     return 0;
   }
-  return Number((params.pnl / exitRisk).toFixed(2));
+  return Number((params.pnl / tradeRisk).toFixed(2));
 }
 
 export function calculateTradeRMultiple(params: {

@@ -33,6 +33,8 @@ type ExitFormState = {
   readonly notes: string;
 };
 
+type ReviewSaveStatus = "idle" | "saving" | "saved" | "error";
+
 export function App(): JSX.Element {
   const [view, setView] = useState<View>("dashboard");
   const [data, setData] = useState<AppData | null>(null);
@@ -235,6 +237,8 @@ function TradeDetail(props: { readonly tradeId: number; readonly referenceData: 
   const [editExitFile, setEditExitFile] = useState<File | null>(null);
   const [editExitForm, setEditExitForm] = useState<ExitFormState | null>(null);
   const [review, setReview] = useState({ followedPlan: "1", ruleScore: "5", disciplineScore: "5", wentWell: "", wentWrong: "", lesson: "", repeatNextTime: "", avoidNextTime: "", mistakeIds: [] as number[] });
+  const [reviewSaveStatus, setReviewSaveStatus] = useState<ReviewSaveStatus>("idle");
+  const [reviewSaveMessage, setReviewSaveMessage] = useState("");
   const load = async (): Promise<void> => {
     const loaded = await apiGet<typeof detail>(`/api/trades/${props.tradeId}`);
     setDetail(loaded);
@@ -332,9 +336,24 @@ function TradeDetail(props: { readonly tradeId: number; readonly referenceData: 
   };
   const reviewSubmit = async (event: FormEvent): Promise<void> => {
     event.preventDefault();
-    await apiSend(`/api/trades/${props.tradeId}/review`, "PUT", { ...review, followedPlan: Number(review.followedPlan), ruleScore: Number(review.ruleScore), disciplineScore: Number(review.disciplineScore) });
-    await load();
-    await props.onChanged();
+    setReviewSaveStatus("saving");
+    setReviewSaveMessage("");
+    try {
+      await apiSend(`/api/trades/${props.tradeId}/review`, "PUT", { ...review, followedPlan: Number(review.followedPlan), ruleScore: Number(review.ruleScore), disciplineScore: Number(review.disciplineScore) });
+      await load();
+      await props.onChanged();
+      setReviewSaveStatus("saved");
+      setReviewSaveMessage("Review saved just now");
+      window.setTimeout(() => setReviewSaveStatus("idle"), 1800);
+    } catch (error: unknown) {
+      setReviewSaveStatus("error");
+      setReviewSaveMessage(error instanceof Error ? error.message : "Unable to save review");
+    }
+  };
+  const updateReviewField = (changes: Partial<typeof review>): void => {
+    setReview({ ...review, ...changes });
+    setReviewSaveStatus("idle");
+    setReviewSaveMessage("");
   };
   const deleteTrade = async (): Promise<void> => {
     if (!window.confirm(`Delete ${detail.trade.symbol} and all of its exits, screenshots, and review data?`)) {
@@ -428,12 +447,13 @@ function TradeDetail(props: { readonly tradeId: number; readonly referenceData: 
       ) : null}
       <form className="compact-form" onSubmit={reviewSubmit}>
         <h3>Review</h3>
-        <label><span>Followed plan</span><select value={review.followedPlan} onChange={(event) => setReview({ ...review, followedPlan: event.target.value })}><option value="1">Yes</option><option value="0">No</option></select></label>
-        <Input label="Rule score 1-10" type="number" value={review.ruleScore} onChange={(value) => setReview({ ...review, ruleScore: value })} />
-        <Input label="Discipline score 1-10" type="number" value={review.disciplineScore} onChange={(value) => setReview({ ...review, disciplineScore: value })} />
-        <label><span>Lesson</span><textarea value={review.lesson} onChange={(event) => setReview({ ...review, lesson: event.target.value })} /></label>
-        <div className="checklist">{props.referenceData.mistakeTags.map((tag) => <label className="check-row" key={tag.id}><input type="checkbox" onChange={(event) => setReview({ ...review, mistakeIds: event.target.checked ? [...review.mistakeIds, tag.id] : review.mistakeIds.filter((id) => id !== tag.id) })} />{tag.label}</label>)}</div>
-        <button className="primary" type="submit">Save Review</button>
+        {reviewSaveMessage ? <p className={reviewSaveStatus === "error" ? "form-message error" : "form-message success"}>{reviewSaveMessage}</p> : null}
+        <label><span>Followed plan</span><select value={review.followedPlan} onChange={(event) => updateReviewField({ followedPlan: event.target.value })}><option value="1">Yes</option><option value="0">No</option></select></label>
+        <Input label="Rule score 1-10" type="number" value={review.ruleScore} onChange={(value) => updateReviewField({ ruleScore: value })} />
+        <Input label="Discipline score 1-10" type="number" value={review.disciplineScore} onChange={(value) => updateReviewField({ disciplineScore: value })} />
+        <label><span>Lesson</span><textarea value={review.lesson} onChange={(event) => updateReviewField({ lesson: event.target.value })} /></label>
+        <div className="checklist">{props.referenceData.mistakeTags.map((tag) => <label className="check-row" key={tag.id}><input type="checkbox" onChange={(event) => updateReviewField({ mistakeIds: event.target.checked ? [...review.mistakeIds, tag.id] : review.mistakeIds.filter((id) => id !== tag.id) })} />{tag.label}</label>)}</div>
+        <button className="primary" disabled={reviewSaveStatus === "saving"} type="submit">{getReviewSaveButtonLabel(reviewSaveStatus)}</button>
       </form>
     </aside>
   );
@@ -508,4 +528,14 @@ function formatRiskUsed(form: TradeFormState): string {
     return "0.00";
   }
   return ((actualRisk / plannedRisk) * 100).toFixed(2);
+}
+
+function getReviewSaveButtonLabel(status: ReviewSaveStatus): string {
+  if (status === "saving") {
+    return "Saving...";
+  }
+  if (status === "saved") {
+    return "Saved";
+  }
+  return "Save Review";
 }

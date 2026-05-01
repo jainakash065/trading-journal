@@ -366,6 +366,24 @@ small {
   gap: 10px;
 }
 
+.form-message {
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 700;
+  margin: 0;
+  padding: 10px 12px;
+}
+
+.form-message.success {
+  background: #e6f2e9;
+  color: #166534;
+}
+
+.form-message.error {
+  background: #f5e3df;
+  color: #9f2d20;
+}
+
 .image-strip {
   display: grid;
   gap: 10px;

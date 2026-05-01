@@ -1,0 +1,11 @@
+node_modules/
+dist/
+data/*.db
+data/*.db-*
+data/screenshots/entries/*
+data/screenshots/exits/*
+data/backups/*
+!data/screenshots/entries/.gitkeep
+!data/screenshots/exits/.gitkeep
+!data/backups/.gitkeep
+.DS_Store

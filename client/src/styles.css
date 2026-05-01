@@ -483,11 +483,30 @@ small {
 }
 
 .toast {
+  align-items: center;
   background: #122620;
   border-radius: 8px;
   color: white;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
   margin-bottom: 14px;
   padding: 12px;
+}
+
+.toast.error {
+  background: #9f2d20;
+}
+
+.toast-dismiss {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  justify-content: center;
+  padding: 2px;
 }
 
 .muted, .loading {

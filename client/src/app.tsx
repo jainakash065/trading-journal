@@ -6,8 +6,13 @@ import type { Dashboard, Settings, Trade, TradeExit } from "./types";
 type View = "dashboard" | "new" | "open" | "closed" | "settings";
 
 const today: string = new Date().toISOString().slice(0, 10);
+const successToastDurationMs: number = 3000;
 
 type StopLossEditedField = "percentage" | "price";
+type ToastState = {
+  readonly message: string;
+  readonly tone: "success" | "error";
+};
 
 type TradeFormState = {
   readonly symbol: string;
@@ -47,7 +52,7 @@ export function App(): JSX.Element {
   const [view, setView] = useState<View>("dashboard");
   const [data, setData] = useState<AppData | null>(null);
   const [selectedTradeId, setSelectedTradeId] = useState<number | null>(null);
-  const [message, setMessage] = useState<string>("");
+  const [toast, setToast] = useState<ToastState | null>(null);
   const reload = async (): Promise<void> => {
     const [dashboard, settings, referenceData, openTrades, closedTrades] = await Promise.all([
       apiGet<Dashboard>(endpoints.dashboard),
@@ -58,9 +63,22 @@ export function App(): JSX.Element {
     ]);
     setData({ dashboard, settings, referenceData, openTrades, closedTrades });
   };
+  const clearToast = (): void => setToast(null);
+  const showToast = (message: string, tone: ToastState["tone"] = "success"): void => setToast({ message, tone });
+  const navigate = (nextView: View): void => {
+    clearToast();
+    setView(nextView);
+  };
   useEffect(() => {
-    reload().catch((error: unknown) => setMessage(error instanceof Error ? error.message : "Unable to load journal"));
+    reload().catch((error: unknown) => showToast(error instanceof Error ? error.message : "Unable to load journal", "error"));
   }, []);
+  useEffect(() => {
+    if (!toast || toast.tone !== "success") {
+      return;
+    }
+    const timeoutId: number = window.setTimeout(clearToast, successToastDurationMs);
+    return () => window.clearTimeout(timeoutId);
+  }, [toast]);
   if (!data) {
     return <main className="app-shell"><p className="loading">Loading trading journal...</p></main>;
   }
@@ -72,23 +90,32 @@ export function App(): JSX.Element {
           <h1>Trading Journal</h1>
         </div>
         <nav>
-          <NavButton active={view === "dashboard"} icon={<BarChart3 />} label="Dashboard" onClick={() => setView("dashboard")} />
-          <NavButton active={view === "new"} icon={<Plus />} label="New Trade" onClick={() => setView("new")} />
-          <NavButton active={view === "open"} icon={<Activity />} label="Open Trades" onClick={() => setView("open")} />
-          <NavButton active={view === "closed"} icon={<BookOpen />} label="Closed Trades" onClick={() => setView("closed")} />
-          <NavButton active={view === "settings"} icon={<SettingsIcon />} label="Settings" onClick={() => setView("settings")} />
+          <NavButton active={view === "dashboard"} icon={<BarChart3 />} label="Dashboard" onClick={() => navigate("dashboard")} />
+          <NavButton active={view === "new"} icon={<Plus />} label="New Trade" onClick={() => navigate("new")} />
+          <NavButton active={view === "open"} icon={<Activity />} label="Open Trades" onClick={() => navigate("open")} />
+          <NavButton active={view === "closed"} icon={<BookOpen />} label="Closed Trades" onClick={() => navigate("closed")} />
+          <NavButton active={view === "settings"} icon={<SettingsIcon />} label="Settings" onClick={() => navigate("settings")} />
         </nav>
       </aside>
       <section className="workspace">
-        {message ? <div className="toast">{message}</div> : null}
+        {toast ? <Toast message={toast.message} tone={toast.tone} onDismiss={clearToast} /> : null}
         {view === "dashboard" ? <DashboardView dashboard={data.dashboard} /> : null}
-        {view === "new" ? <NewTradeView data={data} onSaved={async () => { await reload(); setView("open"); setMessage("Trade saved"); }} /> : null}
+        {view === "new" ? <NewTradeView data={data} onSaved={async () => { await reload(); setView("open"); showToast("Trade saved"); }} /> : null}
         {view === "open" ? <TradesView mode="open" title="Open Trades" trades={data.openTrades} onSelect={setSelectedTradeId} /> : null}
         {view === "closed" ? <TradesView mode="closed" title="Closed Trades" trades={data.closedTrades} onSelect={setSelectedTradeId} /> : null}
         {view === "settings" ? <SettingsView data={data} onSaved={reload} /> : null}
       </section>
-      {selectedTradeId ? <TradeDetail tradeId={selectedTradeId} referenceData={data.referenceData} onClose={() => setSelectedTradeId(null)} onChanged={reload} onDeleted={async () => { setSelectedTradeId(null); await reload(); setMessage("Trade deleted"); }} /> : null}
+      {selectedTradeId ? <TradeDetail tradeId={selectedTradeId} referenceData={data.referenceData} onClose={() => setSelectedTradeId(null)} onChanged={reload} onDeleted={async () => { setSelectedTradeId(null); await reload(); showToast("Trade deleted"); }} /> : null}
     </main>
+  );
+}
+
+function Toast(props: { readonly message: string; readonly tone: ToastState["tone"]; readonly onDismiss: () => void }): JSX.Element {
+  return (
+    <div className={`toast ${props.tone}`} role={props.tone === "error" ? "alert" : "status"}>
+      <span>{props.message}</span>
+      <button aria-label="Dismiss message" className="toast-dismiss" onClick={props.onDismiss} type="button"><X size={16} /></button>
+    </div>
   );
 }
 

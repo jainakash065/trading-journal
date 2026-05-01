@@ -12,6 +12,8 @@ export type TradeRow = {
   readonly riskPercentage: number;
   readonly riskCapitalBase: number;
   readonly plannedRiskAmount: number;
+  readonly positionValue: number;
+  readonly positionSizePercentage: number;
   readonly actualRisk: number;
   readonly riskUsedPercentage: number;
   readonly setupId: number | null;

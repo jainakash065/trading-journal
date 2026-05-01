@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { calculateActualTradeRisk, calculateExitPnl, calculateExitRMultiple, calculateSuggestedQuantity, summarizeTrade } from "../server/src/calculations";
+import {
+  calculateActualTradeRisk,
+  calculateExitPnl,
+  calculateExitRMultiple,
+  calculatePositionSizePercentage,
+  calculatePositionValue,
+  calculateSuggestedQuantity,
+  summarizeTrade
+} from "../server/src/calculations";
 import type { ExitRow, TradeRow } from "../server/src/types";
 
 describe("trading calculations", () => {
@@ -29,6 +37,15 @@ describe("trading calculations", () => {
       stopLoss: 3592.875,
       quantity: 16
     })).toBe(1474);
+    expect(calculatePositionValue(3685, 16)).toBe(58960);
+    expect(calculatePositionSizePercentage({
+      positionValue: 58960,
+      riskCapitalBase: 550000
+    })).toBe(10.72);
+    expect(calculatePositionSizePercentage({
+      positionValue: 58960,
+      riskCapitalBase: 0
+    })).toBe(0);
     const trade: TradeRow = {
       id: 1,
       symbol: "MTARTECH",
@@ -41,6 +58,8 @@ describe("trading calculations", () => {
       riskPercentage: 0.5,
       riskCapitalBase: 550000,
       plannedRiskAmount: 2750,
+      positionValue: 58960,
+      positionSizePercentage: 10.72,
       actualRisk: 1474,
       riskUsedPercentage: 53.6,
       setupId: null,
@@ -74,6 +93,8 @@ describe("trading calculations", () => {
       riskPercentage: 1,
       riskCapitalBase: 550000,
       plannedRiskAmount: 5500,
+      positionValue: 110000,
+      positionSizePercentage: 20,
       actualRisk: 5500,
       riskUsedPercentage: 100,
       setupId: null,

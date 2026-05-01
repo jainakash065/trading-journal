@@ -40,6 +40,8 @@ describe("edit flows", () => {
     });
     const before = getTrade(db, tradeId);
     const beforeExit = listExits(db, tradeId)[0];
+    expect(before?.positionValue).toBe(1000);
+    expect(before?.positionSizePercentage).toBe(0.18);
     updateTrade(db, tradeId, {
       symbol: "TEST",
       market: "India",

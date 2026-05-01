@@ -209,12 +209,13 @@ function TradesView(props: { readonly title: string; readonly trades: readonly T
     <>
       <Header eyebrow="Journal" title={props.title} />
       <div className="table">
-        <div className="table-head"><span>Symbol</span><span>Entry</span><span>Qty</span><span>P&L</span><span>R</span><span>Status</span></div>
+        <div className="table-head"><span>Symbol</span><span>Entry</span><span>Qty</span><span>Position %</span><span>P&L</span><span>R</span><span>Status</span></div>
         {props.trades.map((trade) => (
           <button className="table-row" key={trade.id} onClick={() => props.onSelect(trade.id)} type="button">
             <span><strong>{trade.symbol}</strong><small>{trade.setupName ?? "No setup"}</small></span>
             <span>{money(trade.entryPrice)}<small>{trade.entryDate}</small></span>
             <span>{trade.summary.remainingQuantity}/{trade.quantity}</span>
+            <span>{formatPercent(trade.positionSizePercentage)}</span>
             <span>{money(trade.summary.realizedPnl)}</span>
             <span>{trade.summary.finalRMultiple}</span>
             <span>{trade.summary.status.replace("_", " ")}</span>
@@ -422,6 +423,8 @@ function TradeDetail(props: { readonly tradeId: number; readonly referenceData: 
         <Metric label="Planned risk" value={money(detail.trade.plannedRiskAmount)} />
         <Metric label="Actual risk" value={money(detail.trade.actualRisk)} />
         <Metric label="Risk used" value={`${detail.trade.riskUsedPercentage}%`} />
+        <Metric label="Position value" value={money(detail.trade.positionValue)} />
+        <Metric label="Position %" value={formatPercent(detail.trade.positionSizePercentage)} />
       </div>
       <ImageStrip screenshots={detail.screenshots} />
       {editTradeOpen && editTradeForm ? (
@@ -556,6 +559,10 @@ function ImageStrip(props: { readonly screenshots: readonly { readonly id: numbe
 
 function money(value: number): string {
   return new Intl.NumberFormat("en-IN", { currency: "INR", maximumFractionDigits: 0, style: "currency" }).format(value);
+}
+
+function formatPercent(value: number): string {
+  return `${value.toFixed(2)}%`;
 }
 
 function formatRiskUsed(form: TradeFormState): string {

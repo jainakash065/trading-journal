@@ -39,6 +39,20 @@ export function calculateRiskUsedPercentage(params: {
   return Number(((params.actualRisk / params.plannedRiskAmount) * 100).toFixed(2));
 }
 
+export function calculatePositionValue(entryPrice: number, quantity: number): number {
+  return Number((entryPrice * quantity).toFixed(2));
+}
+
+export function calculatePositionSizePercentage(params: {
+  readonly positionValue: number;
+  readonly riskCapitalBase: number;
+}): number {
+  if (params.riskCapitalBase <= 0) {
+    return 0;
+  }
+  return Number(((params.positionValue / params.riskCapitalBase) * 100).toFixed(2));
+}
+
 export function calculateSuggestedQuantity(params: {
   readonly capital: number;
   readonly riskPercentage: number;

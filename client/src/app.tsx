@@ -45,6 +45,11 @@ type ExitFormState = {
   readonly emotionalState: string;
   readonly notes: string;
 };
+type ScreenshotPreview = {
+  readonly id: number;
+  readonly url: string;
+  readonly type: string;
+};
 
 type ReviewSaveStatus = "idle" | "saving" | "saved" | "error";
 
@@ -332,6 +337,7 @@ function TradeDetail(props: { readonly tradeId: number; readonly referenceData: 
   const [reviewSaveMessage, setReviewSaveMessage] = useState("");
   const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState | null>(null);
   const [confirmSaving, setConfirmSaving] = useState(false);
+  const [screenshotPreview, setScreenshotPreview] = useState<ScreenshotPreview | null>(null);
   const hasActiveEdit = editTradeOpen || editingExitId !== null;
   const load = async (): Promise<void> => {
     const loaded = await apiGet<typeof detail>(`/api/trades/${props.tradeId}`);
@@ -345,6 +351,10 @@ function TradeDetail(props: { readonly tradeId: number; readonly referenceData: 
       if (event.key !== "Escape") {
         return;
       }
+      if (screenshotPreview) {
+        setScreenshotPreview(null);
+        return;
+      }
       if (confirmDialog) {
         closeConfirmDialog();
         return;
@@ -353,7 +363,7 @@ function TradeDetail(props: { readonly tradeId: number; readonly referenceData: 
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [confirmDialog, hasActiveEdit]);
+  }, [confirmDialog, hasActiveEdit, screenshotPreview]);
   const closeConfirmDialog = (): void => {
     if (confirmSaving) {
       return;
@@ -588,7 +598,7 @@ function TradeDetail(props: { readonly tradeId: number; readonly referenceData: 
         <Metric label="Position value" value={money(detail.trade.positionValue)} />
         <Metric label="Position %" value={formatPercent(detail.trade.positionSizePercentage)} />
       </div>
-      <ImageStrip screenshots={detail.screenshots} />
+      <ImageStrip screenshots={detail.screenshots} onPreview={setScreenshotPreview} />
       {editTradeOpen && editTradeForm ? (
         <form className="compact-form" onSubmit={editTradeSubmit}>
           <h3>Edit Trade</h3>
@@ -673,6 +683,7 @@ function TradeDetail(props: { readonly tradeId: number; readonly referenceData: 
           title={confirmDialog.title}
         />
       ) : null}
+      {screenshotPreview ? <ImagePreviewModal screenshot={screenshotPreview} onClose={() => setScreenshotPreview(null)} /> : null}
     </div>
   );
 }
@@ -746,11 +757,34 @@ function StopLossControl(props: {
   );
 }
 
-function ImageStrip(props: { readonly screenshots: readonly { readonly id: number; readonly url: string; readonly type: string }[] }): JSX.Element {
+function ImageStrip(props: { readonly screenshots: readonly ScreenshotPreview[]; readonly onPreview: (screenshot: ScreenshotPreview) => void }): JSX.Element {
   if (props.screenshots.length === 0) {
     return <p className="muted">No screenshots attached.</p>;
   }
-  return <div className="image-strip">{props.screenshots.map((screenshot) => <img alt={`${screenshot.type} screenshot`} key={screenshot.id} src={screenshot.url} />)}</div>;
+  return (
+    <div className="image-strip">
+      {props.screenshots.map((screenshot: ScreenshotPreview) => (
+        <button aria-label={`Preview ${screenshot.type} screenshot`} className="image-thumb" key={screenshot.id} onClick={() => props.onPreview(screenshot)} type="button">
+          <img alt={`${screenshot.type} screenshot`} src={screenshot.url} />
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function ImagePreviewModal(props: { readonly screenshot: ScreenshotPreview; readonly onClose: () => void }): JSX.Element {
+  return (
+    <div aria-modal="true" className="image-preview-layer" role="dialog">
+      <button aria-label="Close screenshot preview" className="confirm-backdrop" onClick={props.onClose} type="button" />
+      <section className="image-preview-dialog">
+        <header className="confirm-header">
+          <h2>{props.screenshot.type} screenshot</h2>
+          <button aria-label="Close screenshot preview" className="icon-secondary" onClick={props.onClose} type="button"><X size={18} /></button>
+        </header>
+        <img alt={`${props.screenshot.type} screenshot preview`} src={props.screenshot.url} />
+      </section>
+    </div>
+  );
 }
 
 function money(value: number): string {

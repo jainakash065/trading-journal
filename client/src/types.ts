@@ -20,6 +20,7 @@ export type TradeSummary = {
   readonly portfolioImpactPercentage: number;
   readonly averageExitPrice: number;
   readonly finalRMultiple: number;
+  readonly durationDays: number;
   readonly status: string;
 };
 

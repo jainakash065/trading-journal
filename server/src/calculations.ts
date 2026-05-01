@@ -7,8 +7,11 @@ export type TradeSummary = {
   readonly portfolioImpactPercentage: number;
   readonly averageExitPrice: number;
   readonly finalRMultiple: number;
+  readonly durationDays: number;
   readonly status: TradeStatus;
 };
+
+const millisecondsPerDay: number = 24 * 60 * 60 * 1000;
 
 export function calculateRiskPerShare(entryPrice: number, stopLoss: number): number {
   return Math.max(entryPrice - stopLoss, 0);
@@ -84,6 +87,18 @@ export function calculatePortfolioImpactPercentage(params: {
   return Number(((params.realizedPnl / params.riskCapitalBase) * 100).toFixed(2));
 }
 
+export function calculateInclusiveDurationDays(params: {
+  readonly entryDate: string;
+  readonly exitDate: string;
+}): number {
+  const entryTime: number = Date.parse(`${params.entryDate}T00:00:00Z`);
+  const exitTime: number = Date.parse(`${params.exitDate}T00:00:00Z`);
+  if (!Number.isFinite(entryTime) || !Number.isFinite(exitTime) || exitTime < entryTime) {
+    return 0;
+  }
+  return Math.floor((exitTime - entryTime) / millisecondsPerDay) + 1;
+}
+
 export function calculateSuggestedQuantity(params: {
   readonly capital: number;
   readonly riskPercentage: number;
@@ -148,6 +163,7 @@ export function summarizeTrade(trade: TradeRow, exits: readonly ExitRow[]): Trad
     stopLoss: trade.stopLoss,
     quantity: trade.quantity
   });
+  const status: TradeStatus = getTradeStatus({ quantity: trade.quantity, remainingQuantity, exitedQuantity });
   return {
     exitedQuantity,
     remainingQuantity,
@@ -158,8 +174,17 @@ export function summarizeTrade(trade: TradeRow, exits: readonly ExitRow[]): Trad
     }),
     averageExitPrice,
     finalRMultiple,
-    status: getTradeStatus({ quantity: trade.quantity, remainingQuantity, exitedQuantity })
+    durationDays: status === "closed" ? calculateClosedDurationDays(trade, exits) : 0,
+    status
   };
+}
+
+function calculateClosedDurationDays(trade: TradeRow, exits: readonly ExitRow[]): number {
+  const lastExit: ExitRow | undefined = exits.at(-1);
+  if (!lastExit) {
+    return 0;
+  }
+  return calculateInclusiveDurationDays({ entryDate: trade.entryDate, exitDate: lastExit.exitDate });
 }
 
 function getTradeStatus(params: {

@@ -3,6 +3,7 @@ import {
   calculateActualTradeRisk,
   calculateExitPnl,
   calculateExitRMultiple,
+  calculateInclusiveDurationDays,
   calculatePortfolioImpactPercentage,
   calculatePositionSizePercentage,
   calculatePositionValue,
@@ -40,6 +41,17 @@ describe("trading calculations", () => {
       entryPrice: 0,
       stopLoss: 92
     })).toBeNull();
+  });
+
+  it("calculates inclusive trade duration", () => {
+    expect(calculateInclusiveDurationDays({
+      entryDate: "2026-04-07",
+      exitDate: "2026-04-23"
+    })).toBe(17);
+    expect(calculateInclusiveDurationDays({
+      entryDate: "2026-04-07",
+      exitDate: "2026-04-07"
+    })).toBe(1);
   });
 
   it("calculates partial exit pnl and r multiple", () => {
@@ -106,14 +118,15 @@ describe("trading calculations", () => {
       createdAt: "2026-05-01"
     };
     const exits: readonly ExitRow[] = [
-      createExit({ id: 1, exitPrice: 4212.9, quantity: 6, pnl: 3167.4, rMultiple: 2.15 }),
-      createExit({ id: 2, exitPrice: 4688.9, quantity: 5, pnl: 5019.5, rMultiple: 3.41 }),
-      createExit({ id: 3, exitPrice: 5358.9, quantity: 5, pnl: 8369.5, rMultiple: 5.68 })
+      createExit({ id: 1, exitDate: "2026-04-09", exitPrice: 4212.9, quantity: 6, pnl: 3167.4, rMultiple: 2.15 }),
+      createExit({ id: 2, exitDate: "2026-04-15", exitPrice: 4688.9, quantity: 5, pnl: 5019.5, rMultiple: 3.41 }),
+      createExit({ id: 3, exitDate: "2026-04-23", exitPrice: 5358.9, quantity: 5, pnl: 8369.5, rMultiple: 5.68 })
     ];
     expect(exits.map((exit: ExitRow) => exit.rMultiple)).toEqual([2.15, 3.41, 5.68]);
     expect(summarizeTrade(trade, exits)).toMatchObject({
       finalRMultiple: 11.23,
-      portfolioImpactPercentage: 3.01
+      portfolioImpactPercentage: 3.01,
+      durationDays: 17
     });
   });
 
@@ -163,6 +176,7 @@ describe("trading calculations", () => {
       portfolioImpactPercentage: 0.91,
       averageExitPrice: 550,
       finalRMultiple: 0.91,
+      durationDays: 0,
       status: "partially_exited"
     });
   });
@@ -170,6 +184,7 @@ describe("trading calculations", () => {
 
 function createExit(params: {
   readonly id: number;
+  readonly exitDate?: string;
   readonly exitPrice: number;
   readonly quantity: number;
   readonly pnl: number;
@@ -178,7 +193,7 @@ function createExit(params: {
   return {
     id: params.id,
     tradeId: 1,
-    exitDate: "2026-05-01",
+    exitDate: params.exitDate ?? "2026-05-01",
     exitPrice: params.exitPrice,
     quantity: params.quantity,
     reason: "",

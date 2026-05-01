@@ -83,8 +83,8 @@ export function App(): JSX.Element {
         {message ? <div className="toast">{message}</div> : null}
         {view === "dashboard" ? <DashboardView dashboard={data.dashboard} /> : null}
         {view === "new" ? <NewTradeView data={data} onSaved={async () => { await reload(); setView("open"); setMessage("Trade saved"); }} /> : null}
-        {view === "open" ? <TradesView title="Open Trades" trades={data.openTrades} onSelect={setSelectedTradeId} /> : null}
-        {view === "closed" ? <TradesView title="Closed Trades" trades={data.closedTrades} onSelect={setSelectedTradeId} /> : null}
+        {view === "open" ? <TradesView mode="open" title="Open Trades" trades={data.openTrades} onSelect={setSelectedTradeId} /> : null}
+        {view === "closed" ? <TradesView mode="closed" title="Closed Trades" trades={data.closedTrades} onSelect={setSelectedTradeId} /> : null}
         {view === "settings" ? <SettingsView data={data} onSaved={reload} /> : null}
       </section>
       {selectedTradeId ? <TradeDetail tradeId={selectedTradeId} referenceData={data.referenceData} onClose={() => setSelectedTradeId(null)} onChanged={reload} onDeleted={async () => { setSelectedTradeId(null); await reload(); setMessage("Trade deleted"); }} /> : null}
@@ -230,12 +230,13 @@ function NewTradeView(props: { readonly data: AppData; readonly onSaved: () => P
   );
 }
 
-function TradesView(props: { readonly title: string; readonly trades: readonly Trade[]; readonly onSelect: (id: number) => void }): JSX.Element {
+function TradesView(props: { readonly mode: "open" | "closed"; readonly title: string; readonly trades: readonly Trade[]; readonly onSelect: (id: number) => void }): JSX.Element {
+  const finalColumnLabel: string = props.mode === "closed" ? "Duration" : "Status";
   return (
     <>
       <Header eyebrow="Journal" title={props.title} />
       <div className="table">
-        <div className="table-head"><span>Symbol</span><span>Entry</span><span>Qty</span><span>Position %</span><span>Impact %</span><span>P&L</span><span>R</span><span>Status</span></div>
+        <div className="table-head"><span>Symbol</span><span>Entry</span><span>Qty</span><span>Position %</span><span>Impact %</span><span>P&L</span><span>R</span><span>{finalColumnLabel}</span></div>
         {props.trades.map((trade) => (
           <button className="table-row" key={trade.id} onClick={() => props.onSelect(trade.id)} type="button">
             <span><strong>{trade.symbol}</strong><small>{trade.setupName ?? "No setup"}</small></span>
@@ -245,7 +246,7 @@ function TradesView(props: { readonly title: string; readonly trades: readonly T
             <span>{formatSignedPercent(trade.summary.portfolioImpactPercentage)}</span>
             <span>{money(trade.summary.realizedPnl)}</span>
             <span>{trade.summary.finalRMultiple}</span>
-            <span>{trade.summary.status.replace("_", " ")}</span>
+            <span>{props.mode === "closed" ? formatDuration(trade.summary.durationDays) : trade.summary.status.replace("_", " ")}</span>
           </button>
         ))}
       </div>
@@ -648,6 +649,13 @@ function formatSignedPercent(value: number): string {
     return `+${formatPercent(value)}`;
   }
   return formatPercent(value);
+}
+
+function formatDuration(durationDays: number): string {
+  if (durationDays <= 0) {
+    return "-";
+  }
+  return `${durationDays}d`;
 }
 
 function updateEntryPrice(form: TradeFormState, entryPrice: string): TradeFormState {

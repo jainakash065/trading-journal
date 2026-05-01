@@ -299,7 +299,7 @@ function TradesView(props: { readonly mode: "open" | "closed"; readonly title: s
           <button className="table-row" key={trade.id} onClick={() => props.onSelect(trade.id)} type="button">
             <span><strong>{trade.symbol}</strong><small>{trade.setupName ?? "No setup"}</small></span>
             <span>{money(trade.entryPrice)}<small>{trade.entryDate}</small></span>
-            <span>{trade.summary.remainingQuantity}/{trade.quantity}</span>
+            <span>{formatTableQuantity(props.mode, trade)}</span>
             <span>{formatPercent(trade.positionSizePercentage)}</span>
             <span>{formatSignedPercent(trade.summary.portfolioImpactPercentage)}</span>
             <span>{money(trade.summary.realizedPnl)}</span>
@@ -773,6 +773,13 @@ function formatDuration(durationDays: number): string {
     return "-";
   }
   return `${durationDays}d`;
+}
+
+function formatTableQuantity(mode: "open" | "closed", trade: Trade): string {
+  if (mode === "closed") {
+    return String(trade.quantity);
+  }
+  return `${trade.summary.remainingQuantity}/${trade.quantity}`;
 }
 
 function updateEntryPrice(form: TradeFormState, entryPrice: string): TradeFormState {

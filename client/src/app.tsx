@@ -1,4 +1,4 @@
-import { Activity, BarChart3, BookOpen, ClipboardCheck, IndianRupee, Pencil, Plus, Settings as SettingsIcon, Trash2 } from "lucide-react";
+import { Activity, BarChart3, BookOpen, ClipboardCheck, IndianRupee, Pencil, Plus, Settings as SettingsIcon, Trash2, X } from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
 import { apiDelete, apiGet, apiSend, endpoints, type AppData, type ReferenceData, uploadScreenshot } from "./api";
 import type { Dashboard, Settings, Trade, TradeExit } from "./types";
@@ -239,6 +239,7 @@ function TradeDetail(props: { readonly tradeId: number; readonly referenceData: 
   const [review, setReview] = useState({ followedPlan: "1", ruleScore: "5", disciplineScore: "5", wentWell: "", wentWrong: "", lesson: "", repeatNextTime: "", avoidNextTime: "", mistakeIds: [] as number[] });
   const [reviewSaveStatus, setReviewSaveStatus] = useState<ReviewSaveStatus>("idle");
   const [reviewSaveMessage, setReviewSaveMessage] = useState("");
+  const hasActiveEdit = editTradeOpen || editingExitId !== null;
   const load = async (): Promise<void> => {
     const loaded = await apiGet<typeof detail>(`/api/trades/${props.tradeId}`);
     setDetail(loaded);
@@ -246,8 +247,35 @@ function TradeDetail(props: { readonly tradeId: number; readonly referenceData: 
   useEffect(() => {
     load().catch(console.error);
   }, [props.tradeId]);
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      if (event.key !== "Escape") {
+        return;
+      }
+      requestClose();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [hasActiveEdit]);
+  const requestClose = (): void => {
+    if (hasActiveEdit && !window.confirm("Close the trade panel? Unsaved edit changes will be lost.")) {
+      return;
+    }
+    props.onClose();
+  };
   if (!detail) {
-    return <div className="drawer"><button onClick={props.onClose}>Close</button><p>Loading trade...</p></div>;
+    return (
+      <div className="drawer-layer">
+        <button aria-label="Close trade panel" className="drawer-backdrop" onClick={props.onClose} type="button" />
+        <aside className="drawer">
+          <header className="drawer-header">
+            <div className="drawer-title"><h2>Loading trade</h2><p className="muted">Fetching journal details</p></div>
+            <button aria-label="Close trade panel" className="icon-secondary" onClick={props.onClose} type="button"><X size={18} /></button>
+          </header>
+          <div className="drawer-content"><p>Loading trade...</p></div>
+        </aside>
+      </div>
+    );
   }
   const addExitSubmit = async (event: FormEvent): Promise<void> => {
     event.preventDefault();
@@ -371,14 +399,21 @@ function TradeDetail(props: { readonly tradeId: number; readonly referenceData: 
     await props.onChanged();
   };
   return (
-    <aside className="drawer">
-      <div className="drawer-actions">
-        <button className="ghost" onClick={props.onClose} type="button">Close</button>
-        <button className="secondary inline-action" onClick={openTradeEditor} type="button"><Pencil size={16} /> Edit Trade</button>
-        <button className="danger" onClick={deleteTrade} type="button"><Trash2 size={16} /> Delete Trade</button>
-      </div>
-      <h2>{detail.trade.symbol}</h2>
-      <p className="muted">{detail.trade.entryDate} · {detail.trade.setupName ?? "No setup"} · {detail.summary.status.replace("_", " ")}</p>
+    <div className="drawer-layer">
+      <button aria-label="Close trade panel" className="drawer-backdrop" onClick={requestClose} type="button" />
+      <aside className="drawer">
+      <header className="drawer-header">
+        <div className="drawer-title">
+          <h2>{detail.trade.symbol}</h2>
+          <p className="muted">{detail.trade.entryDate} · {detail.trade.setupName ?? "No setup"} · {detail.summary.status.replace("_", " ")}</p>
+        </div>
+        <div className="drawer-actions">
+          <button className="secondary inline-action" onClick={openTradeEditor} type="button"><Pencil size={16} /> Edit Trade</button>
+          <button className="danger" onClick={deleteTrade} type="button"><Trash2 size={16} /> Delete Trade</button>
+          <button aria-label="Close trade panel" className="icon-secondary" onClick={requestClose} type="button"><X size={18} /></button>
+        </div>
+      </header>
+      <div className="drawer-content">
       <div className="two-col">
         <Metric label="Entry" value={money(detail.trade.entryPrice)} />
         <Metric label="Remaining" value={`${detail.summary.remainingQuantity}/${detail.trade.quantity}`} />
@@ -455,7 +490,9 @@ function TradeDetail(props: { readonly tradeId: number; readonly referenceData: 
         <div className="checklist">{props.referenceData.mistakeTags.map((tag) => <label className="check-row" key={tag.id}><input type="checkbox" onChange={(event) => updateReviewField({ mistakeIds: event.target.checked ? [...review.mistakeIds, tag.id] : review.mistakeIds.filter((id) => id !== tag.id) })} />{tag.label}</label>)}</div>
         <button className="primary" disabled={reviewSaveStatus === "saving"} type="submit">{getReviewSaveButtonLabel(reviewSaveStatus)}</button>
       </form>
-    </aside>
+      </div>
+      </aside>
+    </div>
   );
 }
 

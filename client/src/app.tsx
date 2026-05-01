@@ -13,6 +13,10 @@ type ToastState = {
   readonly message: string;
   readonly tone: "success" | "error";
 };
+type ConfirmDialogState =
+  | { readonly kind: "close"; readonly title: string; readonly message: string; readonly confirmLabel: string; readonly destructive: false }
+  | { readonly kind: "delete-trade"; readonly title: string; readonly message: string; readonly confirmLabel: string; readonly destructive: true }
+  | { readonly kind: "delete-exit"; readonly exitId: number; readonly title: string; readonly message: string; readonly confirmLabel: string; readonly destructive: true };
 
 type TradeFormState = {
   readonly symbol: string;
@@ -115,6 +119,33 @@ function Toast(props: { readonly message: string; readonly tone: ToastState["ton
     <div className={`toast ${props.tone}`} role={props.tone === "error" ? "alert" : "status"}>
       <span>{props.message}</span>
       <button aria-label="Dismiss message" className="toast-dismiss" onClick={props.onDismiss} type="button"><X size={16} /></button>
+    </div>
+  );
+}
+
+function ConfirmDialog(props: {
+  readonly title: string;
+  readonly message: string;
+  readonly confirmLabel: string;
+  readonly destructive: boolean;
+  readonly saving: boolean;
+  readonly onCancel: () => void;
+  readonly onConfirm: () => void;
+}): JSX.Element {
+  return (
+    <div aria-modal="true" className="confirm-layer" role="dialog">
+      <button aria-label="Cancel confirmation" className="confirm-backdrop" onClick={props.onCancel} type="button" />
+      <section className="confirm-dialog">
+        <header className="confirm-header">
+          <h2>{props.title}</h2>
+          <button aria-label="Cancel confirmation" className="icon-secondary" disabled={props.saving} onClick={props.onCancel} type="button"><X size={18} /></button>
+        </header>
+        <p>{props.message}</p>
+        <div className="form-actions confirm-actions">
+          <button className="ghost" disabled={props.saving} onClick={props.onCancel} type="button">Cancel</button>
+          <button className={props.destructive ? "danger" : "primary"} disabled={props.saving} onClick={props.onConfirm} type="button">{props.saving ? "Working..." : props.confirmLabel}</button>
+        </div>
+      </section>
     </div>
   );
 }
@@ -299,6 +330,8 @@ function TradeDetail(props: { readonly tradeId: number; readonly referenceData: 
   const [review, setReview] = useState({ followedPlan: "1", ruleScore: "5", disciplineScore: "5", wentWell: "", wentWrong: "", lesson: "", repeatNextTime: "", avoidNextTime: "", mistakeIds: [] as number[] });
   const [reviewSaveStatus, setReviewSaveStatus] = useState<ReviewSaveStatus>("idle");
   const [reviewSaveMessage, setReviewSaveMessage] = useState("");
+  const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState | null>(null);
+  const [confirmSaving, setConfirmSaving] = useState(false);
   const hasActiveEdit = editTradeOpen || editingExitId !== null;
   const load = async (): Promise<void> => {
     const loaded = await apiGet<typeof detail>(`/api/trades/${props.tradeId}`);
@@ -312,13 +345,30 @@ function TradeDetail(props: { readonly tradeId: number; readonly referenceData: 
       if (event.key !== "Escape") {
         return;
       }
+      if (confirmDialog) {
+        closeConfirmDialog();
+        return;
+      }
       requestClose();
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [hasActiveEdit]);
+  }, [confirmDialog, hasActiveEdit]);
+  const closeConfirmDialog = (): void => {
+    if (confirmSaving) {
+      return;
+    }
+    setConfirmDialog(null);
+  };
   const requestClose = (): void => {
-    if (hasActiveEdit && !window.confirm("Close the trade panel? Unsaved edit changes will be lost.")) {
+    if (hasActiveEdit) {
+      setConfirmDialog({
+        kind: "close",
+        title: "Close trade panel?",
+        message: "Unsaved edit changes will be lost.",
+        confirmLabel: "Close Panel",
+        destructive: false
+      });
       return;
     }
     props.onClose();
@@ -467,19 +517,48 @@ function TradeDetail(props: { readonly tradeId: number; readonly referenceData: 
     setReviewSaveMessage("");
   };
   const deleteTrade = async (): Promise<void> => {
-    if (!window.confirm(`Delete ${detail.trade.symbol} and all of its exits, screenshots, and review data?`)) {
-      return;
-    }
-    await apiDelete(`/api/trades/${props.tradeId}`);
-    await props.onDeleted();
+    setConfirmDialog({
+      kind: "delete-trade",
+      title: "Delete trade?",
+      message: "This will delete the trade, exits, screenshots, review, and capital impact.",
+      confirmLabel: "Delete Trade",
+      destructive: true
+    });
   };
-  const deleteExit = async (exitId: number): Promise<void> => {
-    if (!window.confirm("Delete this exit and its screenshot/capital impact?")) {
+  const deleteExit = (exitId: number): void => {
+    setConfirmDialog({
+      kind: "delete-exit",
+      exitId,
+      title: "Delete exit?",
+      message: "This will delete this exit, its screenshots, and its capital impact.",
+      confirmLabel: "Delete Exit",
+      destructive: true
+    });
+  };
+  const confirmAction = async (): Promise<void> => {
+    if (!confirmDialog || confirmSaving) {
       return;
     }
-    await apiDelete(`/api/trades/${props.tradeId}/exits/${exitId}`);
-    await load();
-    await props.onChanged();
+    if (confirmDialog.kind === "close") {
+      setConfirmDialog(null);
+      props.onClose();
+      return;
+    }
+    setConfirmSaving(true);
+    try {
+      if (confirmDialog.kind === "delete-trade") {
+        await apiDelete(`/api/trades/${props.tradeId}`);
+        setConfirmDialog(null);
+        await props.onDeleted();
+        return;
+      }
+      await apiDelete(`/api/trades/${props.tradeId}/exits/${confirmDialog.exitId}`);
+      setConfirmDialog(null);
+      await load();
+      await props.onChanged();
+    } finally {
+      setConfirmSaving(false);
+    }
   };
   return (
     <div className="drawer-layer">
@@ -583,6 +662,17 @@ function TradeDetail(props: { readonly tradeId: number; readonly referenceData: 
       </form>
       </div>
       </aside>
+      {confirmDialog ? (
+        <ConfirmDialog
+          confirmLabel={confirmDialog.confirmLabel}
+          destructive={confirmDialog.destructive}
+          message={confirmDialog.message}
+          onCancel={closeConfirmDialog}
+          onConfirm={confirmAction}
+          saving={confirmSaving}
+          title={confirmDialog.title}
+        />
+      ) : null}
     </div>
   );
 }

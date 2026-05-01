@@ -398,6 +398,58 @@ small {
   z-index: 11;
 }
 
+.confirm-layer {
+  align-items: center;
+  bottom: 0;
+  display: flex;
+  justify-content: center;
+  left: 0;
+  padding: 24px;
+  position: fixed;
+  right: 0;
+  top: 0;
+  z-index: 30;
+}
+
+.confirm-backdrop {
+  background: rgba(18, 38, 32, .42);
+  border: 0;
+  bottom: 0;
+  cursor: pointer;
+  left: 0;
+  position: fixed;
+  right: 0;
+  top: 0;
+}
+
+.confirm-dialog {
+  background: #fffdfa;
+  border: 1px solid #d7d0c3;
+  border-radius: 8px;
+  box-shadow: 0 18px 50px rgba(18, 38, 32, .22);
+  display: grid;
+  gap: 14px;
+  max-width: 440px;
+  padding: 18px;
+  position: relative;
+  width: min(440px, 100%);
+}
+
+.confirm-header {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.confirm-header h2, .confirm-dialog p {
+  margin: 0;
+}
+
+.confirm-actions {
+  justify-content: flex-end;
+}
+
 .drawer-header {
   align-items: flex-start;
   background: #fffdfa;

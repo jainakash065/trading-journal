@@ -74,7 +74,12 @@ export function buildDashboard(db: Database.Database): Dashboard {
 function listClosedTradeMetrics(db: Database.Database): readonly ClosedTradeMetric[] {
   return db.prepare(`
     SELECT t.id, t.symbol, s.name AS setupName, COALESCE(SUM(e.pnl), 0) AS realizedPnl,
-      COALESCE(SUM(e.r_multiple), 0) AS finalR, MAX(e.exit_date) AS closedDate,
+      CASE
+        WHEN ((t.entry_price - t.stop_loss) * t.quantity) > 0
+        THEN ROUND(COALESCE(SUM(e.pnl), 0) / ((t.entry_price - t.stop_loss) * t.quantity), 2)
+        ELSE 0
+      END AS finalR,
+      MAX(e.exit_date) AS closedDate,
       r.followed_plan AS followedPlan, r.rule_score AS ruleScore
     FROM trades t
     JOIN trade_exits e ON e.trade_id = t.id

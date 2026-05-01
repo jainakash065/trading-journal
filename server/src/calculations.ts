@@ -13,6 +13,15 @@ export function calculateRiskPerShare(entryPrice: number, stopLoss: number): num
   return Math.max(entryPrice - stopLoss, 0);
 }
 
+export function calculateActualTradeRisk(params: {
+  readonly entryPrice: number;
+  readonly stopLoss: number;
+  readonly quantity: number;
+}): number {
+  const riskPerShare: number = calculateRiskPerShare(params.entryPrice, params.stopLoss);
+  return Number((riskPerShare * params.quantity).toFixed(2));
+}
+
 export function calculateSuggestedQuantity(params: {
   readonly capital: number;
   readonly riskPercentage: number;
@@ -32,18 +41,36 @@ export function calculateExitPnl(entryPrice: number, exitPrice: number, quantity
 
 export function calculateExitRMultiple(params: {
   readonly pnl: number;
-  readonly tradeQuantity: number;
   readonly exitQuantity: number;
-  readonly plannedRiskAmount: number;
+  readonly entryPrice: number;
+  readonly stopLoss: number;
 }): number {
-  if (params.plannedRiskAmount <= 0 || params.tradeQuantity <= 0) {
+  const exitRisk: number = calculateActualTradeRisk({
+    entryPrice: params.entryPrice,
+    stopLoss: params.stopLoss,
+    quantity: params.exitQuantity
+  });
+  if (exitRisk <= 0) {
     return 0;
   }
-  const proportionalRisk: number = params.plannedRiskAmount * (params.exitQuantity / params.tradeQuantity);
-  if (proportionalRisk <= 0) {
+  return Number((params.pnl / exitRisk).toFixed(2));
+}
+
+export function calculateTradeRMultiple(params: {
+  readonly realizedPnl: number;
+  readonly entryPrice: number;
+  readonly stopLoss: number;
+  readonly quantity: number;
+}): number {
+  const actualTradeRisk: number = calculateActualTradeRisk({
+    entryPrice: params.entryPrice,
+    stopLoss: params.stopLoss,
+    quantity: params.quantity
+  });
+  if (actualTradeRisk <= 0) {
     return 0;
   }
-  return Number((params.pnl / proportionalRisk).toFixed(2));
+  return Number((params.realizedPnl / actualTradeRisk).toFixed(2));
 }
 
 export function summarizeTrade(trade: TradeRow, exits: readonly ExitRow[]): TradeSummary {
@@ -53,9 +80,12 @@ export function summarizeTrade(trade: TradeRow, exits: readonly ExitRow[]): Trad
   const averageExitPrice: number = exitedQuantity > 0
     ? Number((exits.reduce((total: number, exit: ExitRow) => total + exit.exitPrice * exit.quantity, 0) / exitedQuantity).toFixed(2))
     : 0;
-  const finalRMultiple: number = exits.length > 0
-    ? Number(exits.reduce((total: number, exit: ExitRow) => total + exit.rMultiple, 0).toFixed(2))
-    : 0;
+  const finalRMultiple: number = calculateTradeRMultiple({
+    realizedPnl,
+    entryPrice: trade.entryPrice,
+    stopLoss: trade.stopLoss,
+    quantity: trade.quantity
+  });
   return {
     exitedQuantity,
     remainingQuantity,

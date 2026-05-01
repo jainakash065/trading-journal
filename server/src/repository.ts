@@ -158,9 +158,9 @@ export function addExit(db: Database.Database, input: {
     const pnl: number = calculateExitPnl(trade.entryPrice, input.exitPrice, input.quantity);
     const rMultiple: number = calculateExitRMultiple({
       pnl,
-      tradeQuantity: trade.quantity,
       exitQuantity: input.quantity,
-      plannedRiskAmount: trade.plannedRiskAmount
+      entryPrice: trade.entryPrice,
+      stopLoss: trade.stopLoss
     });
     const result = db.prepare(`
       INSERT INTO trade_exits (trade_id, exit_date, exit_price, quantity, reason, emotional_state, notes, pnl, r_multiple)
@@ -174,6 +174,27 @@ export function addExit(db: Database.Database, input: {
     return exitId;
   });
   return transaction();
+}
+
+export function backfillExitRMultiples(db: Database.Database): void {
+  const rows = db.prepare(`
+    SELECT e.id, e.pnl, e.quantity, t.entry_price AS entryPrice, t.stop_loss AS stopLoss
+    FROM trade_exits e
+    JOIN trades t ON t.id = e.trade_id
+  `).all() as { readonly id: number; readonly pnl: number; readonly quantity: number; readonly entryPrice: number; readonly stopLoss: number }[];
+  const update = db.prepare("UPDATE trade_exits SET r_multiple = ? WHERE id = ?");
+  const transaction = db.transaction((): void => {
+    rows.forEach((row) => {
+      const rMultiple: number = calculateExitRMultiple({
+        pnl: row.pnl,
+        exitQuantity: row.quantity,
+        entryPrice: row.entryPrice,
+        stopLoss: row.stopLoss
+      });
+      update.run(rMultiple, row.id);
+    });
+  });
+  transaction();
 }
 
 export function saveScreenshot(db: Database.Database, input: {

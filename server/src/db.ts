@@ -1,5 +1,6 @@
 import Database from "better-sqlite3";
 import { dbPath, ensureDataFolders } from "./paths";
+import { backfillExitRMultiples } from "./repository";
 
 export function createDatabase(): Database.Database {
   ensureDataFolders();
@@ -8,6 +9,7 @@ export function createDatabase(): Database.Database {
   db.pragma("foreign_keys = ON");
   migrate(db);
   seed(db);
+  backfillExitRMultiples(db);
   return db;
 }
 

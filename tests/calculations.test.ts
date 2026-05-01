@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { calculateExitPnl, calculateExitRMultiple, calculateSuggestedQuantity, summarizeTrade } from "../server/src/calculations";
+import { calculateActualTradeRisk, calculateExitPnl, calculateExitRMultiple, calculateSuggestedQuantity, summarizeTrade } from "../server/src/calculations";
 import type { ExitRow, TradeRow } from "../server/src/types";
 
 describe("trading calculations", () => {
@@ -17,10 +17,44 @@ describe("trading calculations", () => {
     expect(pnl).toBe(5000);
     expect(calculateExitRMultiple({
       pnl,
-      tradeQuantity: 220,
       exitQuantity: 100,
-      plannedRiskAmount: 5500
+      entryPrice: 500,
+      stopLoss: 475
     })).toBe(2);
+  });
+
+  it("calculates trade r from actual position risk", () => {
+    expect(calculateActualTradeRisk({
+      entryPrice: 3685,
+      stopLoss: 3592.875,
+      quantity: 16
+    })).toBe(1474);
+    const trade: TradeRow = {
+      id: 1,
+      symbol: "MTARTECH",
+      market: "India",
+      direction: "Buy",
+      entryDate: "2026-04-07",
+      entryPrice: 3685,
+      quantity: 16,
+      stopLoss: 3592.875,
+      riskPercentage: 0.5,
+      plannedRiskAmount: 2750,
+      setupId: null,
+      setupName: null,
+      entryReason: "",
+      emotionalState: "",
+      confidence: 5,
+      notes: "",
+      status: "closed",
+      createdAt: "2026-05-01"
+    };
+    const exits: readonly ExitRow[] = [
+      createExit({ id: 1, exitPrice: 4212.9, quantity: 6, pnl: 3167.4, rMultiple: 5.73 }),
+      createExit({ id: 2, exitPrice: 4688.9, quantity: 5, pnl: 5019.5, rMultiple: 10.9 }),
+      createExit({ id: 3, exitPrice: 5358.9, quantity: 5, pnl: 8369.5, rMultiple: 18.17 })
+    ];
+    expect(summarizeTrade(trade, exits).finalRMultiple).toBe(11.23);
   });
 
   it("summarizes partially exited trades", () => {
@@ -62,8 +96,30 @@ describe("trading calculations", () => {
       remainingQuantity: 120,
       realizedPnl: 5000,
       averageExitPrice: 550,
-      finalRMultiple: 2,
+      finalRMultiple: 0.91,
       status: "partially_exited"
     });
   });
 });
+
+function createExit(params: {
+  readonly id: number;
+  readonly exitPrice: number;
+  readonly quantity: number;
+  readonly pnl: number;
+  readonly rMultiple: number;
+}): ExitRow {
+  return {
+    id: params.id,
+    tradeId: 1,
+    exitDate: "2026-05-01",
+    exitPrice: params.exitPrice,
+    quantity: params.quantity,
+    reason: "",
+    emotionalState: "",
+    notes: "",
+    pnl: params.pnl,
+    rMultiple: params.rMultiple,
+    createdAt: "2026-05-01"
+  };
+}

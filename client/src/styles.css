@@ -95,6 +95,26 @@ nav {
   padding: 16px;
 }
 
+.derived-metric {
+  background: #ffffff;
+  border: 1px solid #e2ddd2;
+  border-radius: 8px;
+  display: grid;
+  gap: 6px;
+  min-height: 66px;
+  padding: 12px;
+}
+
+.derived-metric span {
+  color: #69757f;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.derived-metric strong {
+  color: #122620;
+}
+
 .metric span {
   color: #69757f;
   font-size: 13px;

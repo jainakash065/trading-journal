@@ -84,7 +84,7 @@ function createTestTrade(db: Database.Database): number {
     quantity: 10,
     stopLoss: 90,
     riskPercentage: 1,
-    plannedRiskAmount: 5500,
+    riskCapitalBase: 550000,
     setupId: 1,
     entryReason: "Test setup",
     emotionalState: "",

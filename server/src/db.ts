@@ -58,6 +58,7 @@ function migrate(db: Database.Database): void {
       quantity INTEGER NOT NULL,
       stop_loss REAL NOT NULL,
       risk_percentage REAL NOT NULL,
+      risk_capital_base REAL NOT NULL DEFAULT 0,
       planned_risk_amount REAL NOT NULL,
       setup_id INTEGER,
       entry_reason TEXT NOT NULL DEFAULT '',
@@ -123,6 +124,29 @@ function migrate(db: Database.Database): void {
       FOREIGN KEY (mistake_id) REFERENCES mistake_tags(id)
     );
   `);
+  addRiskCapitalBaseColumn(db);
+  backfillRiskCapitalBase(db);
+}
+
+function addRiskCapitalBaseColumn(db: Database.Database): void {
+  const columns = db.prepare("PRAGMA table_info(trades)").all() as { readonly name: string }[];
+  const hasColumn: boolean = columns.some((column: { readonly name: string }) => column.name === "risk_capital_base");
+  if (!hasColumn) {
+    db.prepare("ALTER TABLE trades ADD COLUMN risk_capital_base REAL NOT NULL DEFAULT 0").run();
+  }
+}
+
+function backfillRiskCapitalBase(db: Database.Database): void {
+  const settings = db.prepare("SELECT value FROM settings WHERE key = 'startingCapital'").get() as { readonly value: string } | undefined;
+  const startingCapital: number = Number(settings?.value ?? 550000);
+  db.prepare(`
+    UPDATE trades
+    SET risk_capital_base = CASE
+      WHEN risk_percentage > 0 THEN ROUND(planned_risk_amount / (risk_percentage / 100.0), 2)
+      ELSE ?
+    END
+    WHERE risk_capital_base IS NULL OR risk_capital_base = 0
+  `).run(startingCapital);
 }
 
 function seed(db: Database.Database): void {

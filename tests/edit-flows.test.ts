@@ -7,6 +7,65 @@ import { initializeDatabase } from "../server/src/db";
 import { addExit, createTrade, getCurrentCapital, getTrade, listChecklistResponses, listExits, listScreenshots, saveScreenshot, updateExit, updateTrade } from "../server/src/repository";
 
 describe("edit flows", () => {
+  it("infers risk capital base for existing trades", () => {
+    const db: Database.Database = createTestDatabase();
+    const tradeId: number = createTestTrade(db);
+    db.prepare("UPDATE trades SET risk_percentage = 0.5, planned_risk_amount = 2750, risk_capital_base = 0 WHERE id = ?").run(tradeId);
+    initializeDatabase(db);
+    const trade = getTrade(db, tradeId);
+    expect(trade?.riskCapitalBase).toBe(550000);
+    expect(trade?.plannedRiskAmount).toBe(2750);
+  });
+
+  it("editing risk percent derives planned risk without changing actual risk or r", () => {
+    const db: Database.Database = createTestDatabase();
+    const tradeId: number = createTestTrade(db);
+    addExit(db, createExitInput({ tradeId, exitPrice: 120, quantity: 5 }));
+    updateTrade(db, tradeId, {
+      symbol: "TEST",
+      market: "India",
+      direction: "Buy",
+      entryDate: "2026-05-01",
+      entryPrice: 100,
+      quantity: 10,
+      stopLoss: 90,
+      riskPercentage: 0.5,
+      riskCapitalBase: 550000,
+      setupId: 1,
+      entryReason: "",
+      emotionalState: "",
+      confidence: 3,
+      notes: "",
+      checklistResponses: []
+    });
+    const before = getTrade(db, tradeId);
+    const beforeExit = listExits(db, tradeId)[0];
+    updateTrade(db, tradeId, {
+      symbol: "TEST",
+      market: "India",
+      direction: "Buy",
+      entryDate: "2026-05-01",
+      entryPrice: 100,
+      quantity: 10,
+      stopLoss: 90,
+      riskPercentage: 1,
+      riskCapitalBase: 550000,
+      setupId: 1,
+      entryReason: "",
+      emotionalState: "",
+      confidence: 3,
+      notes: "",
+      checklistResponses: []
+    });
+    const after = getTrade(db, tradeId);
+    const afterExit = listExits(db, tradeId)[0];
+    expect(before?.plannedRiskAmount).toBe(2750);
+    expect(after?.plannedRiskAmount).toBe(5500);
+    expect(after?.actualRisk).toBe(before?.actualRisk);
+    expect(afterExit.pnl).toBe(beforeExit.pnl);
+    expect(afterExit.rMultiple).toBe(beforeExit.rMultiple);
+  });
+
   it("recalculates exits, ledger, and checklist when entry fields change", () => {
     const db: Database.Database = createTestDatabase();
     const tradeId: number = createTestTrade(db);
@@ -20,7 +79,7 @@ describe("edit flows", () => {
       quantity: 10,
       stopLoss: 95,
       riskPercentage: 1,
-      plannedRiskAmount: 5500,
+      riskCapitalBase: 550000,
       setupId: 1,
       entryReason: "Edited setup",
       emotionalState: "Calm",
@@ -49,7 +108,7 @@ describe("edit flows", () => {
       quantity: 7,
       stopLoss: 90,
       riskPercentage: 1,
-      plannedRiskAmount: 5500,
+      riskCapitalBase: 550000,
       setupId: 1,
       entryReason: "",
       emotionalState: "",
@@ -96,7 +155,7 @@ describe("edit flows", () => {
       quantity: 10,
       stopLoss: 90,
       riskPercentage: 1,
-      plannedRiskAmount: 5500,
+      riskCapitalBase: 550000,
       setupId: 1,
       entryReason: "",
       emotionalState: "",
@@ -127,7 +186,7 @@ function createTestTrade(db: Database.Database): number {
     quantity: 10,
     stopLoss: 90,
     riskPercentage: 1,
-    plannedRiskAmount: 5500,
+    riskCapitalBase: 550000,
     setupId: 1,
     entryReason: "Test setup",
     emotionalState: "",

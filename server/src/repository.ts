@@ -1,6 +1,6 @@
 import type Database from "better-sqlite3";
 import fs from "node:fs";
-import { calculateExitPnl, calculateExitRMultiple, summarizeTrade } from "./calculations";
+import { calculateExitPnl, calculateExitRMultiple, calculatePlannedRiskAmount, summarizeTrade } from "./calculations";
 import type { ExitRow, ReviewRow, ScreenshotRow, TradeRow } from "./types";
 
 type ListItem = {
@@ -25,7 +25,7 @@ type TradeInput = {
   readonly quantity: number;
   readonly stopLoss: number;
   readonly riskPercentage: number;
-  readonly plannedRiskAmount: number;
+  readonly riskCapitalBase: number;
   readonly setupId: number | null;
   readonly entryReason: string;
   readonly emotionalState: string;
@@ -91,8 +91,8 @@ export function createTrade(db: Database.Database, input: TradeInput): number {
     const result = db.prepare(`
       INSERT INTO trades (
         symbol, market, direction, entry_date, entry_price, quantity, stop_loss, risk_percentage,
-        planned_risk_amount, setup_id, entry_reason, emotional_state, confidence, notes
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        risk_capital_base, planned_risk_amount, setup_id, entry_reason, emotional_state, confidence, notes
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       input.symbol.toUpperCase(),
       input.market,
@@ -102,7 +102,8 @@ export function createTrade(db: Database.Database, input: TradeInput): number {
       input.quantity,
       input.stopLoss,
       input.riskPercentage,
-      input.plannedRiskAmount,
+      input.riskCapitalBase,
+      calculatePlannedRiskAmount(input),
       input.setupId,
       input.entryReason,
       input.emotionalState,
@@ -131,7 +132,7 @@ export function updateTrade(db: Database.Database, tradeId: number, input: Trade
     db.prepare(`
       UPDATE trades SET
         symbol = ?, market = ?, direction = ?, entry_date = ?, entry_price = ?, quantity = ?,
-        stop_loss = ?, risk_percentage = ?, planned_risk_amount = ?, setup_id = ?,
+        stop_loss = ?, risk_percentage = ?, risk_capital_base = ?, planned_risk_amount = ?, setup_id = ?,
         entry_reason = ?, emotional_state = ?, confidence = ?, notes = ?
       WHERE id = ?
     `).run(
@@ -143,7 +144,8 @@ export function updateTrade(db: Database.Database, tradeId: number, input: Trade
       input.quantity,
       input.stopLoss,
       input.riskPercentage,
-      input.plannedRiskAmount,
+      input.riskCapitalBase,
+      calculatePlannedRiskAmount(input),
       input.setupId,
       input.entryReason,
       input.emotionalState,
@@ -164,7 +166,10 @@ export function listTrades(db: Database.Database, closed: boolean): readonly Tra
   return db.prepare(`
     SELECT t.id, t.symbol, t.market, t.direction, t.entry_date AS entryDate, t.entry_price AS entryPrice,
       t.quantity, t.stop_loss AS stopLoss, t.risk_percentage AS riskPercentage,
-      t.planned_risk_amount AS plannedRiskAmount, t.setup_id AS setupId, s.name AS setupName,
+      t.risk_capital_base AS riskCapitalBase, t.planned_risk_amount AS plannedRiskAmount,
+      ROUND((t.entry_price - t.stop_loss) * t.quantity, 2) AS actualRisk,
+      CASE WHEN t.planned_risk_amount > 0 THEN ROUND((((t.entry_price - t.stop_loss) * t.quantity) / t.planned_risk_amount) * 100, 2) ELSE 0 END AS riskUsedPercentage,
+      t.setup_id AS setupId, s.name AS setupName,
       t.entry_reason AS entryReason, t.emotional_state AS emotionalState, t.confidence,
       t.notes, t.status, t.created_at AS createdAt
     FROM trades t
@@ -178,7 +183,10 @@ export function getTrade(db: Database.Database, tradeId: number): TradeRow | und
   return db.prepare(`
     SELECT t.id, t.symbol, t.market, t.direction, t.entry_date AS entryDate, t.entry_price AS entryPrice,
       t.quantity, t.stop_loss AS stopLoss, t.risk_percentage AS riskPercentage,
-      t.planned_risk_amount AS plannedRiskAmount, t.setup_id AS setupId, s.name AS setupName,
+      t.risk_capital_base AS riskCapitalBase, t.planned_risk_amount AS plannedRiskAmount,
+      ROUND((t.entry_price - t.stop_loss) * t.quantity, 2) AS actualRisk,
+      CASE WHEN t.planned_risk_amount > 0 THEN ROUND((((t.entry_price - t.stop_loss) * t.quantity) / t.planned_risk_amount) * 100, 2) ELSE 0 END AS riskUsedPercentage,
+      t.setup_id AS setupId, s.name AS setupName,
       t.entry_reason AS entryReason, t.emotional_state AS emotionalState, t.confidence,
       t.notes, t.status, t.created_at AS createdAt
     FROM trades t

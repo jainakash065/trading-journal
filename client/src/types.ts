@@ -32,7 +32,10 @@ export type Trade = {
   readonly quantity: number;
   readonly stopLoss: number;
   readonly riskPercentage: number;
+  readonly riskCapitalBase: number;
   readonly plannedRiskAmount: number;
+  readonly actualRisk: number;
+  readonly riskUsedPercentage: number;
   readonly setupId: number | null;
   readonly setupName: string | null;
   readonly entryReason: string;

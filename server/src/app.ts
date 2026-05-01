@@ -42,7 +42,7 @@ const tradeSchema = z.object({
   quantity: z.coerce.number().int().positive(),
   stopLoss: z.coerce.number().positive(),
   riskPercentage: z.coerce.number().nonnegative(),
-  plannedRiskAmount: z.coerce.number().nonnegative(),
+  riskCapitalBase: z.coerce.number().nonnegative(),
   setupId: z.coerce.number().int().nullable(),
   entryReason: z.string().default(""),
   emotionalState: z.string().default(""),

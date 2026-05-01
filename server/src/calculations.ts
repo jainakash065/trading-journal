@@ -22,6 +22,23 @@ export function calculateActualTradeRisk(params: {
   return Number((riskPerShare * params.quantity).toFixed(2));
 }
 
+export function calculatePlannedRiskAmount(params: {
+  readonly riskCapitalBase: number;
+  readonly riskPercentage: number;
+}): number {
+  return Number((params.riskCapitalBase * (params.riskPercentage / 100)).toFixed(2));
+}
+
+export function calculateRiskUsedPercentage(params: {
+  readonly actualRisk: number;
+  readonly plannedRiskAmount: number;
+}): number {
+  if (params.plannedRiskAmount <= 0) {
+    return 0;
+  }
+  return Number(((params.actualRisk / params.plannedRiskAmount) * 100).toFixed(2));
+}
+
 export function calculateSuggestedQuantity(params: {
   readonly capital: number;
   readonly riskPercentage: number;

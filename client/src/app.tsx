@@ -16,7 +16,7 @@ type TradeFormState = {
   readonly quantity: string;
   readonly stopLoss: string;
   readonly riskPercentage: string;
-  readonly plannedRiskAmount: string;
+  readonly riskCapitalBase: string;
   readonly setupId: string;
   readonly entryReason: string;
   readonly emotionalState: string;
@@ -132,6 +132,7 @@ function NewTradeView(props: { readonly data: AppData; readonly onSaved: () => P
     quantity: "",
     stopLoss: "",
     riskPercentage: props.data.settings.defaultRiskPercentage ?? "1",
+    riskCapitalBase: String(props.data.settings.currentCapital),
     setupId: "",
     entryReason: "",
     emotionalState: "",
@@ -140,9 +141,11 @@ function NewTradeView(props: { readonly data: AppData; readonly onSaved: () => P
   });
   const [checks, setChecks] = useState<Record<number, boolean>>({});
   const [file, setFile] = useState<File | null>(null);
-  const riskAmount = Number(props.data.settings.currentCapital) * (Number(form.riskPercentage) / 100);
+  const riskAmount = Number(form.riskCapitalBase) * (Number(form.riskPercentage) / 100);
   const riskPerShare = Math.max(Number(form.entryPrice) - Number(form.stopLoss), 0);
   const suggestedQuantity = riskPerShare > 0 ? Math.floor(riskAmount / riskPerShare) : 0;
+  const actualRisk = riskPerShare * Number(form.quantity || suggestedQuantity || 0);
+  const riskUsedPercentage = riskAmount > 0 ? (actualRisk / riskAmount) * 100 : 0;
   const submit = async (event: FormEvent): Promise<void> => {
     event.preventDefault();
     const response = await apiSend<{ readonly id: number }>("/api/trades", "POST", {
@@ -154,7 +157,7 @@ function NewTradeView(props: { readonly data: AppData; readonly onSaved: () => P
       quantity: Number(form.quantity || suggestedQuantity),
       stopLoss: Number(form.stopLoss),
       riskPercentage: Number(form.riskPercentage),
-      plannedRiskAmount: Number(riskAmount.toFixed(2)),
+      riskCapitalBase: Number(form.riskCapitalBase),
       setupId: form.setupId ? Number(form.setupId) : null,
       entryReason: form.entryReason,
       emotionalState: form.emotionalState,
@@ -176,7 +179,11 @@ function NewTradeView(props: { readonly data: AppData; readonly onSaved: () => P
         <Input label="Entry price" type="number" value={form.entryPrice} onChange={(value) => setForm({ ...form, entryPrice: value })} required />
         <Input label="Stop loss" type="number" value={form.stopLoss} onChange={(value) => setForm({ ...form, stopLoss: value })} required />
         <Input label="Risk %" type="number" value={form.riskPercentage} onChange={(value) => setForm({ ...form, riskPercentage: value })} required />
+        <Input label="Risk capital base" type="number" value={form.riskCapitalBase} onChange={(value) => setForm({ ...form, riskCapitalBase: value })} required />
         <Input label={`Quantity · suggested ${suggestedQuantity}`} type="number" value={form.quantity} onChange={(value) => setForm({ ...form, quantity: value })} />
+        <div className="derived-metric"><span>Planned risk</span><strong>{money(riskAmount)}</strong></div>
+        <div className="derived-metric"><span>Actual risk</span><strong>{money(actualRisk)}</strong></div>
+        <div className="derived-metric"><span>Risk used</span><strong>{riskUsedPercentage.toFixed(2)}%</strong></div>
         <label><span>Setup</span><select value={form.setupId} onChange={(event) => setForm({ ...form, setupId: event.target.value })}><option value="">Select setup</option>{props.data.referenceData.setups.map((setup) => <option key={setup.id} value={setup.id}>{setup.name}</option>)}</select></label>
         <Input label="Confidence 1-5" type="number" value={form.confidence} onChange={(value) => setForm({ ...form, confidence: value })} />
         <label className="wide"><span>Entry reason</span><textarea value={form.entryReason} onChange={(event) => setForm({ ...form, entryReason: event.target.value })} /></label>
@@ -257,7 +264,7 @@ function TradeDetail(props: { readonly tradeId: number; readonly referenceData: 
       quantity: String(detail.trade.quantity),
       stopLoss: String(detail.trade.stopLoss),
       riskPercentage: String(detail.trade.riskPercentage),
-      plannedRiskAmount: String(detail.trade.plannedRiskAmount),
+      riskCapitalBase: String(detail.trade.riskCapitalBase),
       setupId: detail.trade.setupId ? String(detail.trade.setupId) : "",
       entryReason: detail.trade.entryReason,
       emotionalState: detail.trade.emotionalState,
@@ -281,7 +288,7 @@ function TradeDetail(props: { readonly tradeId: number; readonly referenceData: 
       quantity: Number(editTradeForm.quantity),
       stopLoss: Number(editTradeForm.stopLoss),
       riskPercentage: Number(editTradeForm.riskPercentage),
-      plannedRiskAmount: Number(editTradeForm.plannedRiskAmount),
+      riskCapitalBase: Number(editTradeForm.riskCapitalBase),
       setupId: editTradeForm.setupId ? Number(editTradeForm.setupId) : null,
       entryReason: editTradeForm.entryReason,
       emotionalState: editTradeForm.emotionalState,
@@ -358,6 +365,9 @@ function TradeDetail(props: { readonly tradeId: number; readonly referenceData: 
         <Metric label="Remaining" value={`${detail.summary.remainingQuantity}/${detail.trade.quantity}`} />
         <Metric label="Realized P&L" value={money(detail.summary.realizedPnl)} />
         <Metric label="Final R" value={String(detail.summary.finalRMultiple)} />
+        <Metric label="Planned risk" value={money(detail.trade.plannedRiskAmount)} />
+        <Metric label="Actual risk" value={money(detail.trade.actualRisk)} />
+        <Metric label="Risk used" value={`${detail.trade.riskUsedPercentage}%`} />
       </div>
       <ImageStrip screenshots={detail.screenshots} />
       {editTradeOpen && editTradeForm ? (
@@ -369,7 +379,10 @@ function TradeDetail(props: { readonly tradeId: number; readonly referenceData: 
           <Input label="Quantity" type="number" value={editTradeForm.quantity} onChange={(value) => setEditTradeForm({ ...editTradeForm, quantity: value })} required />
           <Input label="Stop loss" type="number" value={editTradeForm.stopLoss} onChange={(value) => setEditTradeForm({ ...editTradeForm, stopLoss: value })} required />
           <Input label="Risk %" type="number" value={editTradeForm.riskPercentage} onChange={(value) => setEditTradeForm({ ...editTradeForm, riskPercentage: value })} required />
-          <Input label="Planned risk amount" type="number" value={editTradeForm.plannedRiskAmount} onChange={(value) => setEditTradeForm({ ...editTradeForm, plannedRiskAmount: value })} required />
+          <Input label="Risk capital base" type="number" value={editTradeForm.riskCapitalBase} onChange={(value) => setEditTradeForm({ ...editTradeForm, riskCapitalBase: value })} required />
+          <div className="derived-metric"><span>Planned risk</span><strong>{money(Number(editTradeForm.riskCapitalBase) * (Number(editTradeForm.riskPercentage) / 100))}</strong></div>
+          <div className="derived-metric"><span>Actual risk</span><strong>{money(Math.max(Number(editTradeForm.entryPrice) - Number(editTradeForm.stopLoss), 0) * Number(editTradeForm.quantity || 0))}</strong></div>
+          <div className="derived-metric"><span>Risk used</span><strong>{formatRiskUsed(editTradeForm)}%</strong></div>
           <label><span>Setup</span><select value={editTradeForm.setupId} onChange={(event) => setEditTradeForm({ ...editTradeForm, setupId: event.target.value })}><option value="">Select setup</option>{props.referenceData.setups.map((setup) => <option key={setup.id} value={setup.id}>{setup.name}</option>)}</select></label>
           <Input label="Confidence 1-5" type="number" value={editTradeForm.confidence} onChange={(value) => setEditTradeForm({ ...editTradeForm, confidence: value })} />
           <label><span>Entry reason</span><textarea value={editTradeForm.entryReason} onChange={(event) => setEditTradeForm({ ...editTradeForm, entryReason: event.target.value })} /></label>
@@ -486,4 +499,13 @@ function ImageStrip(props: { readonly screenshots: readonly { readonly id: numbe
 
 function money(value: number): string {
   return new Intl.NumberFormat("en-IN", { currency: "INR", maximumFractionDigits: 0, style: "currency" }).format(value);
+}
+
+function formatRiskUsed(form: TradeFormState): string {
+  const plannedRisk = Number(form.riskCapitalBase) * (Number(form.riskPercentage) / 100);
+  const actualRisk = Math.max(Number(form.entryPrice) - Number(form.stopLoss), 0) * Number(form.quantity || 0);
+  if (plannedRisk <= 0) {
+    return "0.00";
+  }
+  return ((actualRisk / plannedRisk) * 100).toFixed(2);
 }

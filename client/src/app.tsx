@@ -209,13 +209,14 @@ function TradesView(props: { readonly title: string; readonly trades: readonly T
     <>
       <Header eyebrow="Journal" title={props.title} />
       <div className="table">
-        <div className="table-head"><span>Symbol</span><span>Entry</span><span>Qty</span><span>Position %</span><span>P&L</span><span>R</span><span>Status</span></div>
+        <div className="table-head"><span>Symbol</span><span>Entry</span><span>Qty</span><span>Position %</span><span>Impact %</span><span>P&L</span><span>R</span><span>Status</span></div>
         {props.trades.map((trade) => (
           <button className="table-row" key={trade.id} onClick={() => props.onSelect(trade.id)} type="button">
             <span><strong>{trade.symbol}</strong><small>{trade.setupName ?? "No setup"}</small></span>
             <span>{money(trade.entryPrice)}<small>{trade.entryDate}</small></span>
             <span>{trade.summary.remainingQuantity}/{trade.quantity}</span>
             <span>{formatPercent(trade.positionSizePercentage)}</span>
+            <span>{formatSignedPercent(trade.summary.portfolioImpactPercentage)}</span>
             <span>{money(trade.summary.realizedPnl)}</span>
             <span>{trade.summary.finalRMultiple}</span>
             <span>{trade.summary.status.replace("_", " ")}</span>
@@ -419,6 +420,7 @@ function TradeDetail(props: { readonly tradeId: number; readonly referenceData: 
         <Metric label="Entry" value={money(detail.trade.entryPrice)} />
         <Metric label="Remaining" value={`${detail.summary.remainingQuantity}/${detail.trade.quantity}`} />
         <Metric label="Realized P&L" value={money(detail.summary.realizedPnl)} />
+        <Metric label="Impact %" value={formatSignedPercent(detail.summary.portfolioImpactPercentage)} tone={detail.summary.portfolioImpactPercentage >= 0 ? "good" : "bad"} />
         <Metric label="Final R" value={String(detail.summary.finalRMultiple)} />
         <Metric label="Planned risk" value={money(detail.trade.plannedRiskAmount)} />
         <Metric label="Actual risk" value={money(detail.trade.actualRisk)} />
@@ -563,6 +565,13 @@ function money(value: number): string {
 
 function formatPercent(value: number): string {
   return `${value.toFixed(2)}%`;
+}
+
+function formatSignedPercent(value: number): string {
+  if (value > 0) {
+    return `+${formatPercent(value)}`;
+  }
+  return formatPercent(value);
 }
 
 function formatRiskUsed(form: TradeFormState): string {

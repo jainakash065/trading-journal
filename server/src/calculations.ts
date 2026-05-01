@@ -4,6 +4,7 @@ export type TradeSummary = {
   readonly exitedQuantity: number;
   readonly remainingQuantity: number;
   readonly realizedPnl: number;
+  readonly portfolioImpactPercentage: number;
   readonly averageExitPrice: number;
   readonly finalRMultiple: number;
   readonly status: TradeStatus;
@@ -51,6 +52,16 @@ export function calculatePositionSizePercentage(params: {
     return 0;
   }
   return Number(((params.positionValue / params.riskCapitalBase) * 100).toFixed(2));
+}
+
+export function calculatePortfolioImpactPercentage(params: {
+  readonly realizedPnl: number;
+  readonly riskCapitalBase: number;
+}): number {
+  if (params.riskCapitalBase <= 0) {
+    return 0;
+  }
+  return Number(((params.realizedPnl / params.riskCapitalBase) * 100).toFixed(2));
 }
 
 export function calculateSuggestedQuantity(params: {
@@ -121,6 +132,10 @@ export function summarizeTrade(trade: TradeRow, exits: readonly ExitRow[]): Trad
     exitedQuantity,
     remainingQuantity,
     realizedPnl,
+    portfolioImpactPercentage: calculatePortfolioImpactPercentage({
+      realizedPnl,
+      riskCapitalBase: trade.riskCapitalBase
+    }),
     averageExitPrice,
     finalRMultiple,
     status: getTradeStatus({ quantity: trade.quantity, remainingQuantity, exitedQuantity })

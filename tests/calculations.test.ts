@@ -3,6 +3,7 @@ import {
   calculateActualTradeRisk,
   calculateExitPnl,
   calculateExitRMultiple,
+  calculatePortfolioImpactPercentage,
   calculatePositionSizePercentage,
   calculatePositionValue,
   calculateSuggestedQuantity,
@@ -46,6 +47,18 @@ describe("trading calculations", () => {
       positionValue: 58960,
       riskCapitalBase: 0
     })).toBe(0);
+    expect(calculatePortfolioImpactPercentage({
+      realizedPnl: 16556.4,
+      riskCapitalBase: 550000
+    })).toBe(3.01);
+    expect(calculatePortfolioImpactPercentage({
+      realizedPnl: -6875,
+      riskCapitalBase: 550000
+    })).toBe(-1.25);
+    expect(calculatePortfolioImpactPercentage({
+      realizedPnl: 16556.4,
+      riskCapitalBase: 0
+    })).toBe(0);
     const trade: TradeRow = {
       id: 1,
       symbol: "MTARTECH",
@@ -77,7 +90,10 @@ describe("trading calculations", () => {
       createExit({ id: 3, exitPrice: 5358.9, quantity: 5, pnl: 8369.5, rMultiple: 5.68 })
     ];
     expect(exits.map((exit: ExitRow) => exit.rMultiple)).toEqual([2.15, 3.41, 5.68]);
-    expect(summarizeTrade(trade, exits).finalRMultiple).toBe(11.23);
+    expect(summarizeTrade(trade, exits)).toMatchObject({
+      finalRMultiple: 11.23,
+      portfolioImpactPercentage: 3.01
+    });
   });
 
   it("summarizes partially exited trades", () => {
@@ -123,6 +139,7 @@ describe("trading calculations", () => {
       exitedQuantity: 100,
       remainingQuantity: 120,
       realizedPnl: 5000,
+      portfolioImpactPercentage: 0.91,
       averageExitPrice: 550,
       finalRMultiple: 0.91,
       status: "partially_exited"

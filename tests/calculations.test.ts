@@ -7,6 +7,8 @@ import {
   calculatePositionSizePercentage,
   calculatePositionValue,
   calculateSuggestedQuantity,
+  calculateStopLossPercentageFromPrice,
+  calculateStopLossPriceFromPercentage,
   summarizeTrade
 } from "../server/src/calculations";
 import type { ExitRow, TradeRow } from "../server/src/types";
@@ -19,6 +21,25 @@ describe("trading calculations", () => {
       entryPrice: 500,
       stopLoss: 475
     })).toBe(220);
+  });
+
+  it("converts stop loss between percentage and price", () => {
+    expect(calculateStopLossPriceFromPercentage({
+      entryPrice: 100,
+      stopLossPercentage: 5
+    })).toBe(95);
+    expect(calculateStopLossPercentageFromPrice({
+      entryPrice: 100,
+      stopLoss: 92
+    })).toBe(8);
+    expect(calculateStopLossPriceFromPercentage({
+      entryPrice: 0,
+      stopLossPercentage: 5
+    })).toBeNull();
+    expect(calculateStopLossPercentageFromPrice({
+      entryPrice: 0,
+      stopLoss: 92
+    })).toBeNull();
   });
 
   it("calculates partial exit pnl and r multiple", () => {

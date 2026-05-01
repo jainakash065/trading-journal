@@ -189,9 +189,40 @@ input, select, textarea {
   padding: 10px 12px;
 }
 
+fieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+}
+
 textarea {
   min-height: 84px;
   resize: vertical;
+}
+
+.paired-field {
+  border: 1px solid #d7d0c3;
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+}
+
+.paired-field legend {
+  color: #56616a;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 0 4px;
+}
+
+.paired-inputs {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.paired-inputs input {
+  min-width: 0;
 }
 
 .wide {

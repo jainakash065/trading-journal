@@ -7,6 +7,8 @@ type View = "dashboard" | "new" | "open" | "closed" | "settings";
 
 const today: string = new Date().toISOString().slice(0, 10);
 
+type StopLossEditedField = "percentage" | "price";
+
 type TradeFormState = {
   readonly symbol: string;
   readonly market: string;
@@ -14,7 +16,9 @@ type TradeFormState = {
   readonly entryDate: string;
   readonly entryPrice: string;
   readonly quantity: string;
+  readonly stopLossPercentage: string;
   readonly stopLoss: string;
+  readonly stopLossLastEdited: StopLossEditedField;
   readonly riskPercentage: string;
   readonly riskCapitalBase: string;
   readonly setupId: string;
@@ -129,10 +133,14 @@ function DashboardView(props: { readonly dashboard: Dashboard }): JSX.Element {
 function NewTradeView(props: { readonly data: AppData; readonly onSaved: () => Promise<void> }): JSX.Element {
   const [form, setForm] = useState({
     symbol: "",
+    market: "India",
+    direction: "Buy",
     entryDate: today,
     entryPrice: "",
     quantity: "",
+    stopLossPercentage: "",
     stopLoss: "",
+    stopLossLastEdited: "price" as StopLossEditedField,
     riskPercentage: props.data.settings.defaultRiskPercentage ?? "1",
     riskCapitalBase: String(props.data.settings.currentCapital),
     setupId: "",
@@ -178,8 +186,13 @@ function NewTradeView(props: { readonly data: AppData; readonly onSaved: () => P
       <form className="form-grid" onSubmit={submit}>
         <Input label="Symbol" value={form.symbol} onChange={(value) => setForm({ ...form, symbol: value })} required />
         <Input label="Entry date" type="date" value={form.entryDate} onChange={(value) => setForm({ ...form, entryDate: value })} required />
-        <Input label="Entry price" type="number" value={form.entryPrice} onChange={(value) => setForm({ ...form, entryPrice: value })} required />
-        <Input label="Stop loss" type="number" value={form.stopLoss} onChange={(value) => setForm({ ...form, stopLoss: value })} required />
+        <Input label="Entry price" type="number" value={form.entryPrice} onChange={(value) => setForm(updateEntryPrice(form, value))} required />
+        <StopLossControl
+          percentage={form.stopLossPercentage}
+          price={form.stopLoss}
+          onPercentageChange={(value) => setForm(updateStopLossPercentage(form, value))}
+          onPriceChange={(value) => setForm(updateStopLossPrice(form, value))}
+        />
         <Input label="Risk %" type="number" value={form.riskPercentage} onChange={(value) => setForm({ ...form, riskPercentage: value })} required />
         <Input label="Risk capital base" type="number" value={form.riskCapitalBase} onChange={(value) => setForm({ ...form, riskCapitalBase: value })} required />
         <Input label={`Quantity · suggested ${suggestedQuantity}`} type="number" value={form.quantity} onChange={(value) => setForm({ ...form, quantity: value })} />
@@ -296,7 +309,9 @@ function TradeDetail(props: { readonly tradeId: number; readonly referenceData: 
       entryDate: detail.trade.entryDate,
       entryPrice: String(detail.trade.entryPrice),
       quantity: String(detail.trade.quantity),
+      stopLossPercentage: calculateStopLossPercentageText(String(detail.trade.entryPrice), String(detail.trade.stopLoss)),
       stopLoss: String(detail.trade.stopLoss),
+      stopLossLastEdited: "price",
       riskPercentage: String(detail.trade.riskPercentage),
       riskCapitalBase: String(detail.trade.riskCapitalBase),
       setupId: detail.trade.setupId ? String(detail.trade.setupId) : "",
@@ -434,9 +449,14 @@ function TradeDetail(props: { readonly tradeId: number; readonly referenceData: 
           <h3>Edit Trade</h3>
           <Input label="Symbol" value={editTradeForm.symbol} onChange={(value) => setEditTradeForm({ ...editTradeForm, symbol: value })} required />
           <Input label="Entry date" type="date" value={editTradeForm.entryDate} onChange={(value) => setEditTradeForm({ ...editTradeForm, entryDate: value })} required />
-          <Input label="Entry price" type="number" value={editTradeForm.entryPrice} onChange={(value) => setEditTradeForm({ ...editTradeForm, entryPrice: value })} required />
+          <Input label="Entry price" type="number" value={editTradeForm.entryPrice} onChange={(value) => setEditTradeForm(updateEntryPrice(editTradeForm, value))} required />
           <Input label="Quantity" type="number" value={editTradeForm.quantity} onChange={(value) => setEditTradeForm({ ...editTradeForm, quantity: value })} required />
-          <Input label="Stop loss" type="number" value={editTradeForm.stopLoss} onChange={(value) => setEditTradeForm({ ...editTradeForm, stopLoss: value })} required />
+          <StopLossControl
+            percentage={editTradeForm.stopLossPercentage}
+            price={editTradeForm.stopLoss}
+            onPercentageChange={(value) => setEditTradeForm(updateStopLossPercentage(editTradeForm, value))}
+            onPriceChange={(value) => setEditTradeForm(updateStopLossPrice(editTradeForm, value))}
+          />
           <Input label="Risk %" type="number" value={editTradeForm.riskPercentage} onChange={(value) => setEditTradeForm({ ...editTradeForm, riskPercentage: value })} required />
           <Input label="Risk capital base" type="number" value={editTradeForm.riskCapitalBase} onChange={(value) => setEditTradeForm({ ...editTradeForm, riskCapitalBase: value })} required />
           <div className="derived-metric"><span>Planned risk</span><strong>{money(Number(editTradeForm.riskCapitalBase) * (Number(editTradeForm.riskPercentage) / 100))}</strong></div>
@@ -548,8 +568,26 @@ function Metric(props: { readonly label: string; readonly value: string; readonl
   return <div className={`metric ${props.tone ?? ""}`}>{props.icon}<span>{props.label}</span><strong>{props.value}</strong></div>;
 }
 
-function Input(props: { readonly label: string; readonly value: string; readonly onChange: (value: string) => void; readonly type?: string; readonly required?: boolean }): JSX.Element {
-  return <label><span>{props.label}</span><input required={props.required} type={props.type ?? "text"} value={props.value} onChange={(event) => props.onChange(event.target.value)} /></label>;
+function Input(props: { readonly label: string; readonly value: string; readonly onChange: (value: string) => void; readonly type?: string; readonly required?: boolean; readonly step?: string }): JSX.Element {
+  const step: string | undefined = props.step ?? (props.type === "number" ? "any" : undefined);
+  return <label><span>{props.label}</span><input required={props.required} step={step} type={props.type ?? "text"} value={props.value} onChange={(event) => props.onChange(event.target.value)} /></label>;
+}
+
+function StopLossControl(props: {
+  readonly percentage: string;
+  readonly price: string;
+  readonly onPercentageChange: (value: string) => void;
+  readonly onPriceChange: (value: string) => void;
+}): JSX.Element {
+  return (
+    <fieldset className="paired-field">
+      <legend>Stop loss</legend>
+      <div className="paired-inputs">
+        <label><span>Stop loss %</span><input step="any" type="number" value={props.percentage} onChange={(event) => props.onPercentageChange(event.target.value)} /></label>
+        <label><span>Stop loss</span><input required step="any" type="number" value={props.price} onChange={(event) => props.onPriceChange(event.target.value)} /></label>
+      </div>
+    </fieldset>
+  );
 }
 
 function ImageStrip(props: { readonly screenshots: readonly { readonly id: number; readonly url: string; readonly type: string }[] }): JSX.Element {
@@ -572,6 +610,57 @@ function formatSignedPercent(value: number): string {
     return `+${formatPercent(value)}`;
   }
   return formatPercent(value);
+}
+
+function updateEntryPrice(form: TradeFormState, entryPrice: string): TradeFormState {
+  if (form.stopLossLastEdited === "percentage") {
+    const stopLoss: string = calculateStopLossPriceText(entryPrice, form.stopLossPercentage);
+    return { ...form, entryPrice, stopLoss: stopLoss || form.stopLoss };
+  }
+  const stopLossPercentage: string = calculateStopLossPercentageText(entryPrice, form.stopLoss);
+  return { ...form, entryPrice, stopLossPercentage: stopLossPercentage || form.stopLossPercentage };
+}
+
+function updateStopLossPercentage(form: TradeFormState, stopLossPercentage: string): TradeFormState {
+  const stopLoss: string = calculateStopLossPriceText(form.entryPrice, stopLossPercentage);
+  return {
+    ...form,
+    stopLossPercentage,
+    stopLoss: stopLoss || form.stopLoss,
+    stopLossLastEdited: "percentage"
+  };
+}
+
+function updateStopLossPrice(form: TradeFormState, stopLoss: string): TradeFormState {
+  const stopLossPercentage: string = calculateStopLossPercentageText(form.entryPrice, stopLoss);
+  return {
+    ...form,
+    stopLoss,
+    stopLossPercentage: stopLossPercentage || form.stopLossPercentage,
+    stopLossLastEdited: "price"
+  };
+}
+
+function calculateStopLossPriceText(entryPriceValue: string, percentageValue: string): string {
+  const entryPrice: number = Number(entryPriceValue);
+  const percentage: number = Number(percentageValue);
+  if (!Number.isFinite(entryPrice) || !Number.isFinite(percentage) || entryPrice <= 0 || percentageValue === "") {
+    return "";
+  }
+  return formatFormNumber(entryPrice * (1 - percentage / 100));
+}
+
+function calculateStopLossPercentageText(entryPriceValue: string, stopLossValue: string): string {
+  const entryPrice: number = Number(entryPriceValue);
+  const stopLoss: number = Number(stopLossValue);
+  if (!Number.isFinite(entryPrice) || !Number.isFinite(stopLoss) || entryPrice <= 0 || stopLossValue === "") {
+    return "";
+  }
+  return formatFormNumber(((entryPrice - stopLoss) / entryPrice) * 100);
+}
+
+function formatFormNumber(value: number): string {
+  return Number(value.toFixed(2)).toString();
 }
 
 function formatRiskUsed(form: TradeFormState): string {

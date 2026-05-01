@@ -54,6 +54,26 @@ export function calculatePositionSizePercentage(params: {
   return Number(((params.positionValue / params.riskCapitalBase) * 100).toFixed(2));
 }
 
+export function calculateStopLossPriceFromPercentage(params: {
+  readonly entryPrice: number;
+  readonly stopLossPercentage: number;
+}): number | null {
+  if (params.entryPrice <= 0 || !Number.isFinite(params.entryPrice) || !Number.isFinite(params.stopLossPercentage)) {
+    return null;
+  }
+  return Number((params.entryPrice * (1 - params.stopLossPercentage / 100)).toFixed(2));
+}
+
+export function calculateStopLossPercentageFromPrice(params: {
+  readonly entryPrice: number;
+  readonly stopLoss: number;
+}): number | null {
+  if (params.entryPrice <= 0 || !Number.isFinite(params.entryPrice) || !Number.isFinite(params.stopLoss)) {
+    return null;
+  }
+  return Number((((params.entryPrice - params.stopLoss) / params.entryPrice) * 100).toFixed(2));
+}
+
 export function calculatePortfolioImpactPercentage(params: {
   readonly realizedPnl: number;
   readonly riskCapitalBase: number;

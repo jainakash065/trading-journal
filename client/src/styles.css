@@ -163,6 +163,12 @@ nav {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
+.equity-selected-summary {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
 .equity-chart {
   background: #fbfaf7;
   border: 1px solid #ece7dd;
@@ -198,6 +204,39 @@ nav {
   fill: #ffffff;
   stroke: #122620;
   stroke-width: 2;
+}
+
+.equity-point:focus {
+  outline: none;
+  stroke: #d7a84f;
+  stroke-width: 4;
+}
+
+.equity-point-selected {
+  fill: #d7a84f;
+  stroke: #122620;
+  stroke-width: 3;
+}
+
+.equity-crosshair {
+  stroke: #56616a;
+  stroke-dasharray: 4 6;
+  stroke-width: 1.5;
+}
+
+.equity-tooltip rect {
+  fill: #122620;
+  opacity: .92;
+}
+
+.equity-tooltip {
+  pointer-events: none;
+}
+
+.equity-tooltip text {
+  fill: #f7f3e8;
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .equity-axis-label {
@@ -813,7 +852,7 @@ small {
   .analytics-with-distribution {
     grid-template-columns: 1fr;
   }
-  .metric-grid, .snapshot-grid, .equity-summary, .form-grid, .table-head, .table-row {
+  .metric-grid, .snapshot-grid, .equity-summary, .equity-selected-summary, .form-grid, .table-head, .table-row {
     grid-template-columns: 1fr;
   }
 }

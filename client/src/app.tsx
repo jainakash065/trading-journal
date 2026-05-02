@@ -1,5 +1,5 @@
 import { Activity, BarChart3, BookOpen, ClipboardCheck, IndianRupee, Pencil, Plus, Settings as SettingsIcon, Trash2, X } from "lucide-react";
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, type PointerEvent, useEffect, useState } from "react";
 import { apiDelete, apiGet, apiSend, endpoints, type AppData, type ReferenceData, uploadScreenshot } from "./api";
 import type { CapitalCurvePoint, Dashboard, DashboardPeriodKey, LastNTradeCount, RDistributionBucket, Settings, Trade, TradeExit } from "./types";
 
@@ -353,9 +353,16 @@ function RDistributionPanel(props: { readonly buckets: readonly RDistributionBuc
 
 function EquityCurvePanel(props: { readonly dashboard: Dashboard }): JSX.Element {
   const d = props.dashboard;
+  const latestPointIndex: number = Math.max(d.capitalCurve.length - 1, 0);
+  const [selectedPointIndex, setSelectedPointIndex] = useState<number>(latestPointIndex);
+  useEffect(() => {
+    setSelectedPointIndex(latestPointIndex);
+  }, [latestPointIndex, d.period.key, d.period.startDate, d.period.endDate]);
   if (!d.periodCapitalAvailable || d.capitalCurve.length === 0 || d.periodStartingCapital === null || d.periodEndingCapital === null) {
     return <section className="panel"><p className="muted">No capital history for this period.</p></section>;
   }
+  const selectedPoint: CapitalCurvePoint = d.capitalCurve[Math.min(selectedPointIndex, latestPointIndex)] ?? d.capitalCurve[latestPointIndex];
+  const selectedChangeFromStart: number = selectedPoint.capital - d.periodStartingCapital;
   const lineTone: string = d.periodEndingCapital >= d.periodStartingCapital ? "good" : "bad";
   return (
     <section className="panel equity-panel">
@@ -365,12 +372,32 @@ function EquityCurvePanel(props: { readonly dashboard: Dashboard }): JSX.Element
         <Metric label="Change" value={formatCapitalChange(d.periodCapitalChange, d.periodCapitalChangePercentage)} tone={getNullableTone(d.periodCapitalChange)} />
         <Metric label="Max drawdown" value={money(d.maxDrawdown)} tone="bad" />
       </div>
-      <EquityCurveSvg baseline={d.periodStartingCapital} points={d.capitalCurve} tone={lineTone} />
+      <div className="equity-selected-summary" aria-live="polite">
+        <Metric label="Selected date" value={formatDisplayDate(selectedPoint.date)} />
+        <Metric label="Capital" value={money(selectedPoint.capital)} />
+        <Metric label="Booked P&L" value={money(selectedPoint.dailyPnl)} tone={getNumberTone(selectedPoint.dailyPnl)} />
+        <Metric label="From period start" value={money(selectedChangeFromStart)} tone={getNumberTone(selectedChangeFromStart)} />
+      </div>
+      <EquityCurveSvg
+        baseline={d.periodStartingCapital}
+        onPointSelect={setSelectedPointIndex}
+        onPointerExit={() => setSelectedPointIndex(latestPointIndex)}
+        points={d.capitalCurve}
+        selectedIndex={Math.min(selectedPointIndex, latestPointIndex)}
+        tone={lineTone}
+      />
     </section>
   );
 }
 
-function EquityCurveSvg(props: { readonly baseline: number; readonly points: readonly CapitalCurvePoint[]; readonly tone: string }): JSX.Element {
+function EquityCurveSvg(props: {
+  readonly baseline: number;
+  readonly onPointSelect: (index: number) => void;
+  readonly onPointerExit: () => void;
+  readonly points: readonly CapitalCurvePoint[];
+  readonly selectedIndex: number;
+  readonly tone: string;
+}): JSX.Element {
   const dimensions = { width: 720, height: 240, paddingX: 34, paddingY: 22 };
   const capitals: readonly number[] = props.points.map((point: CapitalCurvePoint) => point.capital);
   const minCapital: number = Math.min(props.baseline, ...capitals);
@@ -380,19 +407,54 @@ function EquityCurveSvg(props: { readonly baseline: number; readonly points: rea
   const yForCapital = (capital: number): number => dimensions.height - dimensions.paddingY - ((capital - minCapital) / range) * (dimensions.height - dimensions.paddingY * 2);
   const path: string = props.points.map((point: CapitalCurvePoint, index: number) => `${index === 0 ? "M" : "L"} ${xForIndex(index).toFixed(2)} ${yForCapital(point.capital).toFixed(2)}`).join(" ");
   const baselineY: number = yForCapital(props.baseline);
+  const selectedPoint: CapitalCurvePoint = props.points[props.selectedIndex];
+  const selectedX: number = xForIndex(props.selectedIndex);
+  const selectedY: number = yForCapital(selectedPoint.capital);
+  const handlePointerMove = (event: PointerEvent<SVGSVGElement>): void => {
+    const svgRect: DOMRect = event.currentTarget.getBoundingClientRect();
+    const pointerX: number = ((event.clientX - svgRect.left) / svgRect.width) * dimensions.width;
+    props.onPointSelect(getNearestCurvePointIndex({ pointerX, points: props.points, xForIndex }));
+  };
   return (
-    <svg aria-label="Realized equity curve" className="equity-chart" role="img" viewBox={`0 0 ${dimensions.width} ${dimensions.height}`}>
+    <svg aria-label="Realized equity curve" className="equity-chart" onPointerLeave={props.onPointerExit} onPointerMove={handlePointerMove} role="img" viewBox={`0 0 ${dimensions.width} ${dimensions.height}`}>
       <line className="equity-baseline" x1={dimensions.paddingX} x2={dimensions.width - dimensions.paddingX} y1={baselineY} y2={baselineY} />
       <path className={`equity-line ${props.tone}`} d={path} />
+      <line className="equity-crosshair" x1={selectedX} x2={selectedX} y1={dimensions.paddingY} y2={dimensions.height - dimensions.paddingY} />
       {props.points.map((point: CapitalCurvePoint, index: number) => (
-        <circle className="equity-point" cx={xForIndex(index)} cy={yForCapital(point.capital)} key={`${point.date}-${index}`} r="4">
+        <circle
+          aria-label={`${point.date}, capital ${money(point.capital)}, booked P&L ${money(point.dailyPnl)}`}
+          className={index === props.selectedIndex ? "equity-point equity-point-selected" : "equity-point"}
+          cx={xForIndex(index)}
+          cy={yForCapital(point.capital)}
+          key={`${point.date}-${index}`}
+          onFocus={() => props.onPointSelect(index)}
+          r={index === props.selectedIndex ? 6 : 4}
+          tabIndex={0}
+        >
           <title>{point.date} · Capital {money(point.capital)} · Booked P&L {money(point.dailyPnl)}</title>
         </circle>
       ))}
+      <g className="equity-tooltip" transform={`translate(${Math.min(selectedX + 12, dimensions.width - 180)} ${Math.max(selectedY - 46, 12)})`}>
+        <rect height="42" rx="6" width="168" />
+        <text x="10" y="17">{formatDisplayDate(selectedPoint.date)}</text>
+        <text x="10" y="33">{money(selectedPoint.capital)} · {money(selectedPoint.dailyPnl)}</text>
+      </g>
       <text className="equity-axis-label" x={dimensions.paddingX} y={dimensions.height - 4}>{props.points[0]?.date}</text>
       <text className="equity-axis-label" textAnchor="end" x={dimensions.width - dimensions.paddingX} y={dimensions.height - 4}>{props.points[props.points.length - 1]?.date}</text>
     </svg>
   );
+}
+
+function getNearestCurvePointIndex(params: {
+  readonly pointerX: number;
+  readonly points: readonly CapitalCurvePoint[];
+  readonly xForIndex: (index: number) => number;
+}): number {
+  return params.points.reduce((nearestIndex: number, _point: CapitalCurvePoint, index: number) => {
+    const currentDistance: number = Math.abs(params.xForIndex(index) - params.pointerX);
+    const nearestDistance: number = Math.abs(params.xForIndex(nearestIndex) - params.pointerX);
+    return currentDistance < nearestDistance ? index : nearestIndex;
+  }, 0);
 }
 
 function NewTradeView(props: { readonly data: AppData; readonly onSaved: () => Promise<void> }): JSX.Element {

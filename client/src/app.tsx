@@ -225,13 +225,13 @@ function DashboardView(props: {
       <section className="dashboard-section">
         <h3>Period Performance</h3>
         <div className="metric-grid">
-          <Metric label="Period P&L" value={money(d.periodPnl)} tone={d.periodPnl >= 0 ? "good" : "bad"} />
+          <Metric label="Booked P&L" value={money(d.periodBookedPnl)} tone={getNumberTone(d.periodBookedPnl)} />
+          <Metric label="Closed Trade P&L" value={money(d.periodClosedTradePnl)} tone={getNumberTone(d.periodClosedTradePnl)} />
+          <Metric label="Open Realized P&L" value={money(d.periodOpenRealizedPnl)} tone={getNumberTone(d.periodOpenRealizedPnl)} />
           <Metric label="Closed trades" value={String(d.periodClosedTrades)} />
           <Metric label="Win rate" value={`${d.winRate}%`} />
           <Metric label="Average R" value={String(d.averageR)} />
           <Metric label="Profit factor" value={String(d.profitFactor)} />
-          <Metric label="Average winner" value={money(d.averageWinner)} tone="good" />
-          <Metric label="Average loser" value={money(d.averageLoser)} tone="bad" />
           <Metric label="Max drawdown" value={money(d.maxDrawdown)} tone="bad" />
         </div>
       </section>
@@ -870,6 +870,10 @@ function getNullableTone(value: number | null): "good" | "bad" | undefined {
   if (value === null) {
     return undefined;
   }
+  return getNumberTone(value);
+}
+
+function getNumberTone(value: number): "good" | "bad" {
   return value >= 0 ? "good" : "bad";
 }
 

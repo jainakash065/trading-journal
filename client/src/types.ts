@@ -84,6 +84,9 @@ export type Dashboard = {
   readonly periodCapitalChange: number | null;
   readonly periodCapitalChangePercentage: number | null;
   readonly periodPnl: number;
+  readonly periodBookedPnl: number;
+  readonly periodClosedTradePnl: number;
+  readonly periodOpenRealizedPnl: number;
   readonly periodClosedTrades: number;
   readonly winRate: number;
   readonly averageWinner: number;

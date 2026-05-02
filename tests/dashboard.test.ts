@@ -28,6 +28,9 @@ describe("dashboard period metrics", () => {
       endDate: "2026-05-31"
     });
     expect(dashboard.periodPnl).toBe(0);
+    expect(dashboard.periodBookedPnl).toBe(0);
+    expect(dashboard.periodClosedTradePnl).toBe(0);
+    expect(dashboard.periodOpenRealizedPnl).toBe(0);
     expect(dashboard.periodClosedTrades).toBe(0);
     expect(dashboard.periodCapitalAvailable).toBe(true);
     expect(dashboard.periodStartingCapital).toBe(566556.4);
@@ -44,6 +47,9 @@ describe("dashboard period metrics", () => {
     expect(lastMonth.periodEndingCapital).toBe(566556.4);
     expect(lastMonth.periodCapitalChange).toBe(16556.4);
     expect(lastMonth.periodCapitalChangePercentage).toBe(3.01);
+    expect(lastMonth.periodBookedPnl).toBe(16556.4);
+    expect(lastMonth.periodClosedTradePnl).toBe(16556.4);
+    expect(lastMonth.periodOpenRealizedPnl).toBe(0);
     expectPeriodPnl(currentFy, "current_fy", 16556.4);
     expect(currentFy.period.startDate).toBe("2026-04-01");
     expect(currentFy.period.endDate).toBe("2027-03-31");
@@ -58,6 +64,22 @@ describe("dashboard period metrics", () => {
     expect(dashboard.periodStartingCapital).toBe(550000);
     expect(dashboard.periodEndingCapital).toBe(566556.4);
     expect(dashboard.periodPnl).toBe(16556.4);
+    expect(dashboard.periodBookedPnl).toBe(16556.4);
+    expect(dashboard.periodClosedTradePnl).toBe(16556.4);
+    expect(dashboard.periodOpenRealizedPnl).toBe(0);
+  });
+
+  it("separates booked pnl from closed trade pnl when a trade is partially exited", () => {
+    const db: Database.Database = createDashboardDatabase();
+    createMtarTechTrade(db);
+    createPartiallyExitedTrade(db);
+    const dashboard: Dashboard = buildDashboard(db, "last_month", dashboardToday);
+    expect(dashboard.periodBookedPnl).toBe(26006.4);
+    expect(dashboard.periodClosedTradePnl).toBe(16556.4);
+    expect(dashboard.periodOpenRealizedPnl).toBe(9450);
+    expect(dashboard.periodCapitalChange).toBe(dashboard.periodBookedPnl);
+    expect(dashboard.periodPnl).toBe(dashboard.periodClosedTradePnl);
+    expect(dashboard.periodClosedTrades).toBe(1);
   });
 
   it("infers capital history start date for existing journal data", () => {
@@ -99,6 +121,29 @@ function createMtarTechTrade(db: Database.Database): number {
   addExit(db, createExitInput({ tradeId, exitDate: "2026-04-15", exitPrice: 4688.9, quantity: 5 }));
   addExit(db, createExitInput({ tradeId, exitDate: "2026-04-23", exitPrice: 5358.9, quantity: 5 }));
   db.prepare("UPDATE settings SET value = '2026-04-01' WHERE key = 'capitalHistoryStartDate'").run();
+  return tradeId;
+}
+
+function createPartiallyExitedTrade(db: Database.Database): number {
+  const tradeId: number = createTrade(db, {
+    symbol: "ATHER",
+    market: "India",
+    direction: "Buy",
+    entryDate: "2026-04-09",
+    entryPrice: 786,
+    quantity: 126,
+    stopLoss: 766.35,
+    riskPercentage: 0.5,
+    riskCapitalBase: 550000,
+    setupId: 1,
+    entryReason: "Imported",
+    emotionalState: "",
+    confidence: 3,
+    notes: "",
+    checklistResponses: []
+  });
+  addExit(db, createExitInput({ tradeId, exitDate: "2026-04-10", exitPrice: 865, quantity: 42 }));
+  addExit(db, createExitInput({ tradeId, exitDate: "2026-04-13", exitPrice: 932, quantity: 42 }));
   return tradeId;
 }
 

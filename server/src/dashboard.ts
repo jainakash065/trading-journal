@@ -12,6 +12,13 @@ type ClosedTradeMetric = {
   readonly ruleScore: number | null;
 };
 
+type RealizedExitMetric = {
+  readonly tradeId: number;
+  readonly tradeStatus: string;
+  readonly pnl: number;
+  readonly exitDate: string;
+};
+
 export type DashboardPeriodKey = "all_time" | "current_fy" | "last_fy" | "this_month" | "last_month" | "this_week";
 
 type DashboardPeriod = {
@@ -41,6 +48,9 @@ export type Dashboard = {
   readonly periodCapitalChange: number | null;
   readonly periodCapitalChangePercentage: number | null;
   readonly periodPnl: number;
+  readonly periodBookedPnl: number;
+  readonly periodClosedTradePnl: number;
+  readonly periodOpenRealizedPnl: number;
   readonly periodClosedTrades: number;
   readonly winRate: number;
   readonly averageWinner: number;
@@ -66,8 +76,11 @@ export function buildDashboard(db: Database.Database, periodKey: DashboardPeriod
   const capitalHistoryStartDate: string = settings.capitalHistoryStartDate ?? todayText;
   const period: DashboardPeriod = getDashboardPeriod(periodKey, today);
   const closedTrades: readonly ClosedTradeMetric[] = listClosedTradeMetrics(db);
+  const realizedExits: readonly RealizedExitMetric[] = listRealizedExitMetrics(db);
   const periodTrades: readonly ClosedTradeMetric[] = filterTradesByPeriod(closedTrades, period);
+  const periodExits: readonly RealizedExitMetric[] = filterExitsByPeriod(realizedExits, period);
   const totalRealizedPnl: number = round(closedTrades.reduce((total: number, trade: ClosedTradeMetric) => total + trade.realizedPnl, 0));
+  const periodClosedTradePnl: number = round(periodTrades.reduce((total: number, trade: ClosedTradeMetric) => total + trade.realizedPnl, 0));
   const winners: readonly ClosedTradeMetric[] = periodTrades.filter((trade: ClosedTradeMetric) => trade.realizedPnl > 0);
   const losers: readonly ClosedTradeMetric[] = periodTrades.filter((trade: ClosedTradeMetric) => trade.realizedPnl < 0);
   const winRate: number = periodTrades.length > 0 ? round((winners.length / periodTrades.length) * 100) : 0;
@@ -88,7 +101,10 @@ export function buildDashboard(db: Database.Database, periodKey: DashboardPeriod
     periodEndingCapital: periodCapital.endingCapital,
     periodCapitalChange: periodCapital.change,
     periodCapitalChangePercentage: periodCapital.changePercentage,
-    periodPnl: round(periodTrades.reduce((total: number, trade: ClosedTradeMetric) => total + trade.realizedPnl, 0)),
+    periodPnl: periodClosedTradePnl,
+    periodBookedPnl: round(periodExits.reduce((total: number, exit: RealizedExitMetric) => total + exit.pnl, 0)),
+    periodClosedTradePnl,
+    periodOpenRealizedPnl: round(periodExits.filter((exit: RealizedExitMetric) => exit.tradeStatus !== "closed").reduce((total: number, exit: RealizedExitMetric) => total + exit.pnl, 0)),
     periodClosedTrades: periodTrades.length,
     winRate,
     averageWinner,
@@ -134,6 +150,15 @@ function listClosedTradeMetrics(db: Database.Database): readonly ClosedTradeMetr
     GROUP BY t.id
     ORDER BY closedDate ASC, t.id ASC
   `).all() as ClosedTradeMetric[];
+}
+
+function listRealizedExitMetrics(db: Database.Database): readonly RealizedExitMetric[] {
+  return db.prepare(`
+    SELECT e.trade_id AS tradeId, t.status AS tradeStatus, e.pnl, e.exit_date AS exitDate
+    FROM trade_exits e
+    JOIN trades t ON t.id = e.trade_id
+    ORDER BY e.exit_date ASC, e.id ASC
+  `).all() as RealizedExitMetric[];
 }
 
 function average(values: readonly number[]): number {
@@ -211,6 +236,13 @@ function filterTradesByPeriod(trades: readonly ClosedTradeMetric[], period: Dash
   return trades.filter((trade: ClosedTradeMetric) => {
     const afterStart: boolean = period.startDate === null || trade.closedDate >= period.startDate;
     return afterStart && trade.closedDate <= period.endDate;
+  });
+}
+
+function filterExitsByPeriod(exits: readonly RealizedExitMetric[], period: DashboardPeriod): readonly RealizedExitMetric[] {
+  return exits.filter((exit: RealizedExitMetric) => {
+    const afterStart: boolean = period.startDate === null || exit.exitDate >= period.startDate;
+    return afterStart && exit.exitDate <= period.endDate;
   });
 }
 

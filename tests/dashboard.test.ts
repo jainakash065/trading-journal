@@ -1,6 +1,6 @@
 import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
-import { buildDashboard, parseLastNTradeCount, type Dashboard, type DashboardPeriodKey } from "../server/src/dashboard";
+import { buildDashboard, getDashboardPeriod, parseLastNTradeCount, type Dashboard, type DashboardPeriod, type DashboardPeriodKey } from "../server/src/dashboard";
 import { initializeDatabase } from "../server/src/db";
 import { addExit, createTrade, getTrade, listClosedTradesPage, updateActiveStopLoss, updateCurrentPrice } from "../server/src/repository";
 
@@ -460,6 +460,28 @@ describe("dashboard period metrics", () => {
 
     expect(page.items.map((trade) => trade.symbol)).toEqual(["ALPHAWIN"]);
     expect(listClosedTradesPage(db, createClosedTradeFilters({ outcome: "breakeven" })).items.map((trade) => trade.symbol)).toEqual(["ALPHABREAKEVEN"]);
+  });
+
+  it("uses the shared Monday-to-Sunday week for closed trade period filtering", () => {
+    const db: Database.Database = createDashboardDatabase();
+    createClosedTradeWithFinalR(db, { symbol: "BEFOREWEEK", finalR: 1, entryDate: "2026-04-20", exitDate: "2026-04-26" });
+    createClosedTradeWithFinalR(db, { symbol: "OLECTRA", finalR: 1, entryDate: "2026-04-28", exitDate: "2026-04-30" });
+    const period: DashboardPeriod = getDashboardPeriod("this_week", new Date("2026-05-03T00:00:00Z"));
+    const page = listClosedTradesPage(db, createClosedTradeFilters({ periodStart: period.startDate, periodEnd: period.endDate }));
+
+    expect(period.startDate).toBe("2026-04-27");
+    expect(period.endDate).toBe("2026-05-03");
+    expect(page.items.map((trade) => trade.symbol)).toEqual(["OLECTRA"]);
+  });
+
+  it("provides shared preset ranges for dashboard and closed trade filters", () => {
+    const today: Date = new Date("2026-05-03T00:00:00Z");
+
+    expect(getDashboardPeriod("this_week", today)).toMatchObject({ startDate: "2026-04-27", endDate: "2026-05-03" });
+    expect(getDashboardPeriod("this_month", today)).toMatchObject({ startDate: "2026-05-01", endDate: "2026-05-31" });
+    expect(getDashboardPeriod("last_month", today)).toMatchObject({ startDate: "2026-04-01", endDate: "2026-04-30" });
+    expect(getDashboardPeriod("current_fy", today)).toMatchObject({ startDate: "2026-04-01", endDate: "2027-03-31" });
+    expect(getDashboardPeriod("last_fy", today)).toMatchObject({ startDate: "2025-04-01", endDate: "2026-03-31" });
   });
 
   it("infers capital history start date for existing journal data", () => {

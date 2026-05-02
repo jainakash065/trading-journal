@@ -31,7 +31,7 @@ type CapitalCurvePoint = {
 export type DashboardPeriodKey = "all_time" | "current_fy" | "last_fy" | "this_month" | "last_month" | "this_week";
 export type LastNTradeCount = 10 | 20 | 50;
 
-type DashboardPeriod = {
+export type DashboardPeriod = {
   readonly key: DashboardPeriodKey;
   readonly label: string;
   readonly startDate: string | null;
@@ -517,7 +517,7 @@ function round(value: number): number {
   return Number(value.toFixed(2));
 }
 
-function getDashboardPeriod(periodKey: DashboardPeriodKey, today: Date): DashboardPeriod {
+export function getDashboardPeriod(periodKey: DashboardPeriodKey, today: Date): DashboardPeriod {
   const year: number = today.getUTCFullYear();
   const month: number = today.getUTCMonth();
   if (periodKey === "all_time") {

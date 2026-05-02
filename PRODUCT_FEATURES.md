@@ -399,6 +399,8 @@ Implemented:
   - Current FY.
   - Last FY.
   - All time.
+- Period presets are shared by Dashboard, Analytics, and Closed Trades.
+- `This week` means the Monday-to-Sunday calendar week containing today.
 - Indian financial year support:
   - FY starts April 1.
   - FY ends March 31.
@@ -581,6 +583,7 @@ Implemented filters:
 Filtering behavior:
 
 - Period filters use final exit date, not entry date.
+- Period filter ranges match the Dashboard and Analytics period selector.
 - Outcome filters use final realized trade P&L.
 
 Implemented columns:

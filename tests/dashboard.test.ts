@@ -50,6 +50,7 @@ describe("dashboard period metrics", () => {
     expect(lastMonth.periodBookedPnl).toBe(16556.4);
     expect(lastMonth.periodClosedTradePnl).toBe(16556.4);
     expect(lastMonth.periodOpenRealizedPnl).toBe(0);
+    expect(lastMonth.maxDrawdown).toBe(0);
     expectPeriodPnl(currentFy, "current_fy", 16556.4);
     expect(currentFy.period.startDate).toBe("2026-04-01");
     expect(currentFy.period.endDate).toBe("2027-03-31");
@@ -77,9 +78,19 @@ describe("dashboard period metrics", () => {
     expect(dashboard.periodBookedPnl).toBe(26006.4);
     expect(dashboard.periodClosedTradePnl).toBe(16556.4);
     expect(dashboard.periodOpenRealizedPnl).toBe(9450);
+    expect(dashboard.maxDrawdown).toBe(0);
     expect(dashboard.periodCapitalChange).toBe(dashboard.periodBookedPnl);
     expect(dashboard.periodPnl).toBe(dashboard.periodClosedTradePnl);
     expect(dashboard.periodClosedTrades).toBe(1);
+  });
+
+  it("uses booked exits for drawdown inside a winning trade with an early partial loss", () => {
+    const db: Database.Database = createDashboardDatabase();
+    createWinningTradeWithEarlyPartialLoss(db);
+    const dashboard: Dashboard = buildDashboard(db, "last_month", dashboardToday);
+    expect(dashboard.periodBookedPnl).toBe(75);
+    expect(dashboard.periodClosedTradePnl).toBe(75);
+    expect(dashboard.maxDrawdown).toBe(-25);
   });
 
   it("infers capital history start date for existing journal data", () => {
@@ -144,6 +155,30 @@ function createPartiallyExitedTrade(db: Database.Database): number {
   });
   addExit(db, createExitInput({ tradeId, exitDate: "2026-04-10", exitPrice: 865, quantity: 42 }));
   addExit(db, createExitInput({ tradeId, exitDate: "2026-04-13", exitPrice: 932, quantity: 42 }));
+  return tradeId;
+}
+
+function createWinningTradeWithEarlyPartialLoss(db: Database.Database): number {
+  const tradeId: number = createTrade(db, {
+    symbol: "CURVE",
+    market: "India",
+    direction: "Buy",
+    entryDate: "2026-04-09",
+    entryPrice: 100,
+    quantity: 10,
+    stopLoss: 90,
+    riskPercentage: 0.5,
+    riskCapitalBase: 550000,
+    setupId: 1,
+    entryReason: "Drawdown test",
+    emotionalState: "",
+    confidence: 3,
+    notes: "",
+    checklistResponses: []
+  });
+  addExit(db, createExitInput({ tradeId, exitDate: "2026-04-10", exitPrice: 95, quantity: 5 }));
+  addExit(db, createExitInput({ tradeId, exitDate: "2026-04-20", exitPrice: 120, quantity: 5 }));
+  db.prepare("UPDATE settings SET value = '2026-04-01' WHERE key = 'capitalHistoryStartDate'").run();
   return tradeId;
 }
 

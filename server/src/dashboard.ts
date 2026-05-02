@@ -112,7 +112,7 @@ export function buildDashboard(db: Database.Database, periodKey: DashboardPeriod
     profitFactor: grossLoss > 0 ? round(grossProfit / grossLoss) : round(grossProfit),
     averageR: average(periodTrades.map((trade: ClosedTradeMetric) => trade.finalR)),
     expectancy: average(periodTrades.map((trade: ClosedTradeMetric) => trade.realizedPnl)),
-    maxDrawdown: calculateMaxDrawdown({ startingCapital: periodCapital.startingCapital ?? startingCapital, trades: periodTrades }),
+    maxDrawdown: calculateBookedMaxDrawdown({ startingCapital: periodCapital.startingCapital ?? 0, exits: periodExits }),
     openTrades: getCount(db, "SELECT COUNT(*) AS count FROM trades WHERE status != 'closed'"),
     openRiskExposure: getOpenRiskExposure(db),
     bestSetup: getSetupByPnl(periodTrades, "best"),
@@ -266,12 +266,12 @@ function getSetupByPnl(trades: readonly ClosedTradeMetric[], mode: "best" | "wor
   return sorted[0]?.[0] ?? "No closed trades";
 }
 
-function calculateMaxDrawdown(params: { readonly startingCapital: number; readonly trades: readonly ClosedTradeMetric[] }): number {
+function calculateBookedMaxDrawdown(params: { readonly startingCapital: number; readonly exits: readonly RealizedExitMetric[] }): number {
   let capital: number = params.startingCapital;
   let peak: number = params.startingCapital;
   let maxDrawdown: number = 0;
-  params.trades.forEach((trade: ClosedTradeMetric) => {
-    capital += trade.realizedPnl;
+  params.exits.forEach((exit: RealizedExitMetric) => {
+    capital += exit.pnl;
     peak = Math.max(peak, capital);
     maxDrawdown = Math.min(maxDrawdown, capital - peak);
   });

@@ -5,6 +5,9 @@ export type TradeSummary = {
   readonly remainingQuantity: number;
   readonly realizedPnl: number;
   readonly portfolioImpactPercentage: number;
+  readonly unrealizedPnl: number;
+  readonly unrealizedR: number;
+  readonly unrealizedPortfolioImpactPercentage: number;
   readonly averageExitPrice: number;
   readonly finalRMultiple: number;
   readonly durationDays: number;
@@ -87,6 +90,18 @@ export function calculatePortfolioImpactPercentage(params: {
   return Number(((params.realizedPnl / params.riskCapitalBase) * 100).toFixed(2));
 }
 
+export function calculateUnrealizedPnl(params: {
+  readonly currentPrice: number | null;
+  readonly entryPrice: number;
+  readonly remainingQuantity: number;
+  readonly status: TradeStatus;
+}): number {
+  if (params.currentPrice === null || params.status === "closed") {
+    return 0;
+  }
+  return Number(((params.currentPrice - params.entryPrice) * params.remainingQuantity).toFixed(2));
+}
+
 export function calculateInclusiveDurationDays(params: {
   readonly entryDate: string;
   readonly exitDate: string;
@@ -164,12 +179,29 @@ export function summarizeTrade(trade: TradeRow, exits: readonly ExitRow[]): Trad
     quantity: trade.quantity
   });
   const status: TradeStatus = getTradeStatus({ quantity: trade.quantity, remainingQuantity, exitedQuantity });
+  const unrealizedPnl: number = calculateUnrealizedPnl({
+    currentPrice: trade.currentPrice,
+    entryPrice: trade.entryPrice,
+    remainingQuantity,
+    status
+  });
   return {
     exitedQuantity,
     remainingQuantity,
     realizedPnl,
     portfolioImpactPercentage: calculatePortfolioImpactPercentage({
       realizedPnl,
+      riskCapitalBase: trade.riskCapitalBase
+    }),
+    unrealizedPnl,
+    unrealizedR: calculateTradeRMultiple({
+      realizedPnl: unrealizedPnl,
+      entryPrice: trade.entryPrice,
+      stopLoss: trade.stopLoss,
+      quantity: trade.quantity
+    }),
+    unrealizedPortfolioImpactPercentage: calculatePortfolioImpactPercentage({
+      realizedPnl: unrealizedPnl,
       riskCapitalBase: trade.riskCapitalBase
     }),
     averageExitPrice,

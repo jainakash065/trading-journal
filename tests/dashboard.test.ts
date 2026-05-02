@@ -2,7 +2,7 @@ import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
 import { buildDashboard, type Dashboard, type DashboardPeriodKey } from "../server/src/dashboard";
 import { initializeDatabase } from "../server/src/db";
-import { addExit, createTrade, getTrade, updateActiveStopLoss } from "../server/src/repository";
+import { addExit, createTrade, getTrade, updateActiveStopLoss, updateCurrentPrice } from "../server/src/repository";
 
 const dashboardToday: Date = new Date("2026-05-02T00:00:00Z");
 
@@ -102,6 +102,27 @@ describe("dashboard period metrics", () => {
     expect(dashboard.openRiskExposure).toBe(2501.71);
   });
 
+  it("calculates unrealized metrics from manual current price and remaining quantity", () => {
+    const db: Database.Database = createDashboardDatabase();
+    const tradeId: number = createPartiallyExitedTrade(db);
+    expect(getTrade(db, tradeId)).toMatchObject({
+      currentPrice: null,
+      currentPriceUpdatedAt: null,
+      unrealizedPnl: 0,
+      unrealizedR: 0,
+      unrealizedPortfolioImpactPercentage: 0
+    });
+    updateCurrentPrice(db, { tradeId, currentPrice: 900 });
+    const trade = getTrade(db, tradeId);
+    expect(trade).toMatchObject({
+      currentPrice: 900,
+      unrealizedPnl: 4788,
+      unrealizedR: 1.93,
+      unrealizedPortfolioImpactPercentage: 0.87
+    });
+    expect(trade?.currentPriceUpdatedAt).toEqual(expect.any(String));
+  });
+
   it("caps open risk at zero when active stop is above entry", () => {
     const db: Database.Database = createDashboardDatabase();
     const tradeId: number = createOpenTrade(db, {
@@ -119,6 +140,19 @@ describe("dashboard period metrics", () => {
     const db: Database.Database = createDashboardDatabase();
     const tradeId: number = createMtarTechTrade(db);
     expect(() => updateActiveStopLoss(db, { tradeId, activeStopLoss: 3685 })).toThrow("Active stop can only be updated for open trades");
+  });
+
+  it("rejects current price updates for closed trades and non-positive prices", () => {
+    const db: Database.Database = createDashboardDatabase();
+    const openTradeId: number = createOpenTrade(db, {
+      symbol: "OPEN",
+      entryPrice: 100,
+      quantity: 10,
+      stopLoss: 90
+    });
+    const closedTradeId: number = createMtarTechTrade(db);
+    expect(() => updateCurrentPrice(db, { tradeId: openTradeId, currentPrice: 0 })).toThrow("Current price must be positive");
+    expect(() => updateCurrentPrice(db, { tradeId: closedTradeId, currentPrice: 4000 })).toThrow("Current price can only be updated for open trades");
   });
 
   it("uses booked exits for drawdown inside a winning trade with an early partial loss", () => {

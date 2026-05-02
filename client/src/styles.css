@@ -377,6 +377,11 @@ textarea {
   padding: 13px 16px;
 }
 
+.open-trades-table .table-head,
+.open-trades-table .table-row {
+  grid-template-columns: 1.25fr .9fr .55fr .75fr .75fr .85fr .55fr .9fr .65fr .9fr .85fr;
+}
+
 .table-head {
   background: #e9e1d3;
   color: #56616a;

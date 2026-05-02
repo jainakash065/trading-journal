@@ -38,6 +38,7 @@ type TradeFormState = {
   readonly stopLoss: string;
   readonly stopLossLastEdited: StopLossEditedField;
   readonly activeStopLoss: string;
+  readonly currentPrice: string;
   readonly riskPercentage: string;
   readonly riskCapitalBase: string;
   readonly setupId: string;
@@ -288,6 +289,7 @@ function NewTradeView(props: { readonly data: AppData; readonly onSaved: () => P
     stopLoss: "",
     stopLossLastEdited: "price" as StopLossEditedField,
     activeStopLoss: "",
+    currentPrice: "",
     riskPercentage: props.data.settings.defaultRiskPercentage ?? "1",
     riskCapitalBase: String(props.data.settings.currentCapital),
     setupId: "",
@@ -378,8 +380,12 @@ function TradesView(props: { readonly mode: "open" | "closed"; readonly title: s
   return (
     <>
       <Header eyebrow="Journal" title={props.title} />
-      <div className="table">
-        <div className="table-head"><span>Symbol</span><span>Entry</span><span>Qty</span><span>Position %</span><span>Impact %</span><span>P&L</span><span>R</span><span>{finalColumnLabel}</span></div>
+      <div className={`table ${props.mode === "open" ? "open-trades-table" : "closed-trades-table"}`}>
+        <div className="table-head">
+          <span>Symbol</span><span>Entry</span><span>Qty</span><span>Position %</span><span>Impact %</span><span>P&L</span><span>R</span>
+          {props.mode === "open" ? <><span>Unrealized P&L</span><span>Unrealized R</span><span>Unrealized Impact %</span></> : null}
+          <span>{finalColumnLabel}</span>
+        </div>
         {props.trades.map((trade) => (
           <button className="table-row" key={trade.id} onClick={() => props.onSelect(trade.id)} type="button">
             <span><strong>{trade.symbol}</strong><small>{trade.setupName ?? "No setup"}</small></span>
@@ -389,6 +395,7 @@ function TradesView(props: { readonly mode: "open" | "closed"; readonly title: s
             <span>{formatSignedPercent(trade.summary.portfolioImpactPercentage)}</span>
             <span>{money(trade.summary.realizedPnl)}</span>
             <span>{trade.summary.finalRMultiple}</span>
+            {props.mode === "open" ? <><span>{money(trade.unrealizedPnl)}</span><span>{formatR(trade.unrealizedR)}</span><span>{formatSignedPercent(trade.unrealizedPortfolioImpactPercentage)}</span></> : null}
             <span>{props.mode === "closed" ? formatDuration(trade.summary.durationDays) : trade.summary.status.replace("_", " ")}</span>
           </button>
         ))}
@@ -405,6 +412,8 @@ function TradeDetail(props: { readonly tradeId: number; readonly referenceData: 
   const [addExitSaving, setAddExitSaving] = useState(false);
   const [activeStopLoss, setActiveStopLoss] = useState("");
   const [activeStopSaving, setActiveStopSaving] = useState(false);
+  const [currentPrice, setCurrentPrice] = useState("");
+  const [currentPriceSaving, setCurrentPriceSaving] = useState(false);
   const [editTradeOpen, setEditTradeOpen] = useState(false);
   const [editTradeFile, setEditTradeFile] = useState<File | null>(null);
   const [editTradeForm, setEditTradeForm] = useState<TradeFormState | null>(null);
@@ -426,6 +435,7 @@ function TradeDetail(props: { readonly tradeId: number; readonly referenceData: 
     setDetail(loaded);
     if (loaded?.trade) {
       setActiveStopLoss(String(loaded.trade.activeStopLoss));
+      setCurrentPrice(loaded.trade.currentPrice === null ? "" : String(loaded.trade.currentPrice));
     }
   };
   useEffect(() => {
@@ -519,6 +529,20 @@ function TradeDetail(props: { readonly tradeId: number; readonly referenceData: 
   const moveActiveStopToBreakeven = (): void => {
     setActiveStopLoss(String(detail.trade.entryPrice));
   };
+  const currentPriceSubmit = async (event: FormEvent): Promise<void> => {
+    event.preventDefault();
+    if (currentPriceSaving) {
+      return;
+    }
+    setCurrentPriceSaving(true);
+    try {
+      await apiSend(`/api/trades/${props.tradeId}/current-price`, "PATCH", { currentPrice: Number(currentPrice) });
+      await load();
+      await props.onChanged();
+    } finally {
+      setCurrentPriceSaving(false);
+    }
+  };
   const openTradeEditor = (): void => {
     setEditTradeForm({
       symbol: detail.trade.symbol,
@@ -531,6 +555,7 @@ function TradeDetail(props: { readonly tradeId: number; readonly referenceData: 
       stopLoss: String(detail.trade.stopLoss),
       stopLossLastEdited: "price",
       activeStopLoss: String(detail.trade.activeStopLoss),
+      currentPrice: detail.trade.currentPrice === null ? "" : String(detail.trade.currentPrice),
       riskPercentage: String(detail.trade.riskPercentage),
       riskCapitalBase: String(detail.trade.riskCapitalBase),
       setupId: detail.trade.setupId ? String(detail.trade.setupId) : "",
@@ -558,6 +583,7 @@ function TradeDetail(props: { readonly tradeId: number; readonly referenceData: 
         quantity: Number(editTradeForm.quantity),
         stopLoss: Number(editTradeForm.stopLoss),
         activeStopLoss: Number(editTradeForm.activeStopLoss),
+        ...(detail.trade.status !== "closed" ? { currentPrice: editTradeForm.currentPrice === "" ? null : Number(editTradeForm.currentPrice) } : {}),
         riskPercentage: Number(editTradeForm.riskPercentage),
         riskCapitalBase: Number(editTradeForm.riskCapitalBase),
         setupId: editTradeForm.setupId ? Number(editTradeForm.setupId) : null,
@@ -702,10 +728,26 @@ function TradeDetail(props: { readonly tradeId: number; readonly referenceData: 
         <Metric label="Initial SL" value={money(detail.trade.stopLoss)} />
         <Metric label="Active SL" value={money(detail.trade.activeStopLoss)} />
         <Metric label="Current open risk" value={money(calculateCurrentOpenRisk(detail.trade, detail.summary.remainingQuantity))} />
+        <Metric label="Current price" value={detail.trade.currentPrice === null ? "-" : money(detail.trade.currentPrice)} />
+        <Metric label="Unrealized P&L" value={money(detail.trade.unrealizedPnl)} tone={getNumberTone(detail.trade.unrealizedPnl)} />
+        <Metric label="Unrealized R" value={formatR(detail.trade.unrealizedR)} tone={getNumberTone(detail.trade.unrealizedR)} />
+        <Metric label="Unrealized Impact %" value={formatSignedPercent(detail.trade.unrealizedPortfolioImpactPercentage)} tone={getNumberTone(detail.trade.unrealizedPortfolioImpactPercentage)} />
+        <Metric label="Current price updated" value={detail.trade.currentPriceUpdatedAt ? formatTimestamp(detail.trade.currentPriceUpdatedAt) : "-"} />
         <Metric label="Position value" value={money(detail.trade.positionValue)} />
         <Metric label="Position %" value={formatPercent(detail.trade.positionSizePercentage)} />
       </div>
       <ImageStrip screenshots={detail.screenshots} onPreview={setScreenshotPreview} />
+      {detail.trade.status !== "closed" ? (
+        <form className="compact-form" onSubmit={currentPriceSubmit}>
+          <h3>Current Price</h3>
+          <Input label="Current price" type="number" value={currentPrice} onChange={setCurrentPrice} required />
+          <div className="two-col">
+            <div className="derived-metric"><span>Unrealized P&L</span><strong>{money(calculateUnrealizedPnlFromValue(detail.trade.entryPrice, Number(currentPrice), detail.summary.remainingQuantity))}</strong></div>
+            <div className="derived-metric"><span>Unrealized R</span><strong>{formatR(calculateUnrealizedRFromValue(detail.trade, Number(currentPrice), detail.summary.remainingQuantity))}</strong></div>
+          </div>
+          <button className="primary" disabled={currentPriceSaving} type="submit">{currentPriceSaving ? "Saving..." : "Save Current Price"}</button>
+        </form>
+      ) : null}
       {detail.trade.status !== "closed" ? (
         <form className="compact-form" onSubmit={activeStopSubmit}>
           <h3>Active Stop</h3>
@@ -730,6 +772,7 @@ function TradeDetail(props: { readonly tradeId: number; readonly referenceData: 
             onPercentageChange={(value) => setEditTradeForm(updateStopLossPercentage(editTradeForm, value))}
             onPriceChange={(value) => setEditTradeForm(updateStopLossPrice(editTradeForm, value))}
           />
+          {detail.trade.status !== "closed" ? <Input label="Current price" type="number" value={editTradeForm.currentPrice} onChange={(value) => setEditTradeForm({ ...editTradeForm, currentPrice: value })} /> : null}
           <Input label="Active stop" type="number" value={editTradeForm.activeStopLoss} onChange={(value) => setEditTradeForm({ ...editTradeForm, activeStopLoss: value })} required />
           <Input label="Risk %" type="number" value={editTradeForm.riskPercentage} onChange={(value) => setEditTradeForm({ ...editTradeForm, riskPercentage: value })} required />
           <Input label="Risk capital base" type="number" value={editTradeForm.riskCapitalBase} onChange={(value) => setEditTradeForm({ ...editTradeForm, riskCapitalBase: value })} required />
@@ -974,6 +1017,10 @@ function formatDisplayDate(value: string): string {
   return new Intl.DateTimeFormat("en-IN", { day: "2-digit", month: "short", year: "numeric" }).format(new Date(`${value}T00:00:00`));
 }
 
+function formatTimestamp(value: string): string {
+  return new Intl.DateTimeFormat("en-IN", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
+}
+
 function formatTableQuantity(mode: "open" | "closed", trade: Trade): string {
   if (mode === "closed") {
     return String(trade.quantity);
@@ -1050,6 +1097,21 @@ function calculateCurrentOpenRiskFromValue(entryPrice: number, activeStopLoss: n
     return 0;
   }
   return Math.max(entryPrice - activeStopLoss, 0) * remainingQuantity;
+}
+
+function calculateUnrealizedPnlFromValue(entryPrice: number, currentPrice: number, remainingQuantity: number): number {
+  if (!Number.isFinite(currentPrice)) {
+    return 0;
+  }
+  return (currentPrice - entryPrice) * remainingQuantity;
+}
+
+function calculateUnrealizedRFromValue(trade: Trade, currentPrice: number, remainingQuantity: number): number {
+  const tradeRisk: number = Math.max(trade.entryPrice - trade.stopLoss, 0) * trade.quantity;
+  if (tradeRisk <= 0) {
+    return 0;
+  }
+  return calculateUnrealizedPnlFromValue(trade.entryPrice, currentPrice, remainingQuantity) / tradeRisk;
 }
 
 function getReviewSaveButtonLabel(status: ReviewSaveStatus): string {

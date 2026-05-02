@@ -59,6 +59,8 @@ function migrate(db: Database.Database): void {
       quantity INTEGER NOT NULL,
       stop_loss REAL NOT NULL,
       active_stop_loss REAL NOT NULL DEFAULT 0,
+      current_price REAL,
+      current_price_updated_at TEXT,
       risk_percentage REAL NOT NULL,
       risk_capital_base REAL NOT NULL DEFAULT 0,
       planned_risk_amount REAL NOT NULL,
@@ -128,6 +130,7 @@ function migrate(db: Database.Database): void {
   `);
   addRiskCapitalBaseColumn(db);
   addActiveStopLossColumn(db);
+  addCurrentPriceColumns(db);
   backfillRiskCapitalBase(db);
   backfillActiveStopLoss(db);
 }
@@ -167,6 +170,16 @@ function backfillActiveStopLoss(db: Database.Database): void {
     SET active_stop_loss = stop_loss
     WHERE active_stop_loss IS NULL OR active_stop_loss = 0
   `).run();
+}
+
+function addCurrentPriceColumns(db: Database.Database): void {
+  const columns = db.prepare("PRAGMA table_info(trades)").all() as { readonly name: string }[];
+  if (!columns.some((column: { readonly name: string }) => column.name === "current_price")) {
+    db.prepare("ALTER TABLE trades ADD COLUMN current_price REAL").run();
+  }
+  if (!columns.some((column: { readonly name: string }) => column.name === "current_price_updated_at")) {
+    db.prepare("ALTER TABLE trades ADD COLUMN current_price_updated_at TEXT").run();
+  }
 }
 
 function seed(db: Database.Database): void {

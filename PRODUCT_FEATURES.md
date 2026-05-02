@@ -385,6 +385,8 @@ Implemented:
   - R Expectancy.
   - Average Winning R.
   - Average Losing R.
+  - Average Winner Hold days.
+  - Average Loser Hold days.
   - Median R.
   - Largest Winner R.
   - Expectancy excluding largest winner.
@@ -406,8 +408,9 @@ Implemented:
 Current dashboard rules:
 
 - Closed-trade quality metrics are filtered by final exit date.
-- R expectancy and R distribution are based only on fully closed trades.
-- Partial exits from still-open trades affect Booked P&L and Open Realized P&L, but not win rate, average R, expectancy, or R distribution.
+- R expectancy, R distribution, and winner/loser holding-day averages are based only on fully closed trades.
+- Winner/loser holding-day averages use inclusive calendar days from entry date to final exit date.
+- Partial exits from still-open trades affect Booked P&L and Open Realized P&L, but not win rate, average R, expectancy, R distribution, or holding-day averages.
 - Booked P&L and max drawdown use realized exit booking dates, including partial exits.
 - Capital is realized-only.
 - Open trade counts and open risk are current account snapshot values, not period-filtered values.

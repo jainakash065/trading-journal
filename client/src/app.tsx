@@ -1,9 +1,9 @@
-import { Activity, BarChart3, BookOpen, ClipboardCheck, IndianRupee, Pencil, Plus, Settings as SettingsIcon, Trash2, X } from "lucide-react";
+import { Activity, BarChart3, BookOpen, ChartNoAxesCombined, ClipboardCheck, IndianRupee, Pencil, Plus, Settings as SettingsIcon, Trash2, X } from "lucide-react";
 import { FormEvent, type PointerEvent, useEffect, useState } from "react";
 import { apiDelete, apiGet, apiSend, endpoints, type AppData, type ReferenceData, uploadScreenshot } from "./api";
 import type { CapitalCurvePoint, Dashboard, DashboardPeriodKey, LastNTradeCount, RDistributionBucket, Settings, SetupAnalyticsRow, Trade, TradeExit } from "./types";
 
-type View = "dashboard" | "new" | "open" | "closed" | "settings";
+type View = "dashboard" | "analytics" | "new" | "open" | "closed" | "settings";
 
 const today: string = new Date().toISOString().slice(0, 10);
 const successToastDurationMs: number = 3000;
@@ -137,6 +137,7 @@ export function App(): JSX.Element {
         </div>
         <nav>
           <NavButton active={view === "dashboard"} icon={<BarChart3 />} label="Dashboard" onClick={() => navigate("dashboard")} />
+          <NavButton active={view === "analytics"} icon={<ChartNoAxesCombined />} label="Analytics" onClick={() => navigate("analytics")} />
           <NavButton active={view === "new"} icon={<Plus />} label="New Trade" onClick={() => navigate("new")} />
           <NavButton active={view === "open"} icon={<Activity />} label="Open Trades" onClick={() => navigate("open")} />
           <NavButton active={view === "closed"} icon={<BookOpen />} label="Closed Trades" onClick={() => navigate("closed")} />
@@ -145,7 +146,8 @@ export function App(): JSX.Element {
       </aside>
       <section className="workspace">
         {toast ? <Toast message={toast.message} tone={toast.tone} onDismiss={clearToast} /> : null}
-        {view === "dashboard" ? <DashboardView dashboard={data.dashboard} lastNTradeCount={lastNTradeCount} period={dashboardPeriod} onLastNTradeCountChange={changeLastNTradeCount} onPeriodChange={changeDashboardPeriod} /> : null}
+        {view === "dashboard" ? <DashboardView dashboard={data.dashboard} period={dashboardPeriod} onPeriodChange={changeDashboardPeriod} /> : null}
+        {view === "analytics" ? <AnalyticsView dashboard={data.dashboard} lastNTradeCount={lastNTradeCount} period={dashboardPeriod} onLastNTradeCountChange={changeLastNTradeCount} onPeriodChange={changeDashboardPeriod} /> : null}
         {view === "new" ? <NewTradeView data={data} onSaved={async () => { await reload(); setView("open"); showToast("Trade saved"); }} /> : null}
         {view === "open" ? <TradesView mode="open" title="Open Trades" trades={data.openTrades} onSelect={setSelectedTradeId} /> : null}
         {view === "closed" ? <TradesView mode="closed" title="Closed Trades" trades={data.closedTrades} onSelect={setSelectedTradeId} /> : null}
@@ -198,27 +200,13 @@ function NavButton(props: { readonly active: boolean; readonly icon: JSX.Element
 
 function DashboardView(props: {
   readonly dashboard: Dashboard;
-  readonly lastNTradeCount: LastNTradeCount;
   readonly period: DashboardPeriodKey;
-  readonly onLastNTradeCountChange: (count: LastNTradeCount) => Promise<void>;
   readonly onPeriodChange: (period: DashboardPeriodKey) => Promise<void>;
 }): JSX.Element {
   const d = props.dashboard;
   return (
     <>
-      <header className="page-header dashboard-header">
-        <div>
-          <p className="eyebrow">Performance</p>
-          <h2>Dashboard</h2>
-          <p className="period-range">{formatPeriodRange(d.period.startDate ?? d.capitalHistoryStartDate, d.period.endDate)}</p>
-        </div>
-        <label className="period-selector">
-          <span>Period</span>
-          <select value={props.period} onChange={(event) => props.onPeriodChange(event.target.value as DashboardPeriodKey)}>
-            {dashboardPeriodOptions.map((option) => <option key={option.key} value={option.key}>{option.label}</option>)}
-          </select>
-        </label>
-      </header>
+      <DashboardHeader dashboard={d} eyebrow="Performance" period={props.period} title="Dashboard" onPeriodChange={props.onPeriodChange} />
       <section className="dashboard-section">
         <h3>Account Snapshot</h3>
         <div className="metric-grid snapshot-grid">
@@ -259,73 +247,159 @@ function DashboardView(props: {
       </section>
       <section className="dashboard-section">
         <h3>Asymmetric Edge</h3>
-        <div className="analytics-with-distribution">
-          <div className="analytics-main metric-grid">
-            <Metric label="R Expectancy" value={formatR(d.rExpectancy)} tone={getNumberTone(d.rExpectancy)} />
-            <Metric label="Avg Winning R" value={formatR(d.averageWinningR)} tone="good" />
-            <Metric label="Avg Losing R" value={formatR(d.averageLosingR)} tone="bad" />
-            <Metric label="Avg Winner Hold" value={formatHoldDays(d.averageWinningHoldDays)} tone="good" />
-            <Metric label="Avg Loser Hold" value={formatHoldDays(d.averageLosingHoldDays)} tone="bad" />
-            <Metric label="Median R" value={formatR(d.medianR)} tone={getNumberTone(d.medianR)} />
-            <Metric label="Largest Winner R" value={formatR(d.largestWinnerR)} tone="good" />
-            <Metric label="Expectancy Ex-Largest" value={formatR(d.expectancyWithoutLargestWinner)} tone={getNumberTone(d.expectancyWithoutLargestWinner)} />
-          </div>
-          <div className="analytics-side">
-            <RDistributionPanel buckets={d.rDistribution} subtitle={`${getDistributionTotal(d.rDistribution)} closed trades in this period`} title="Period R Distribution" />
-          </div>
+        <div className="metric-grid">
+          <Metric label="R Expectancy" value={formatR(d.rExpectancy)} tone={getNumberTone(d.rExpectancy)} />
+          <Metric label="Avg Winning R" value={formatR(d.averageWinningR)} tone="good" />
+          <Metric label="Avg Losing R" value={formatR(d.averageLosingR)} tone="bad" />
+          <Metric label="Median R" value={formatR(d.medianR)} tone={getNumberTone(d.medianR)} />
+          <Metric label="Expectancy Ex-Largest" value={formatR(d.expectancyWithoutLargestWinner)} tone={getNumberTone(d.expectancyWithoutLargestWinner)} />
         </div>
       </section>
+      <section className="dashboard-section">
+        <h3>Setup Edge Preview</h3>
+        <SetupPreviewPanel rows={d.setupAnalytics} />
+      </section>
+    </>
+  );
+}
+
+function AnalyticsView(props: {
+  readonly dashboard: Dashboard;
+  readonly lastNTradeCount: LastNTradeCount;
+  readonly period: DashboardPeriodKey;
+  readonly onLastNTradeCountChange: (count: LastNTradeCount) => Promise<void>;
+  readonly onPeriodChange: (period: DashboardPeriodKey) => Promise<void>;
+}): JSX.Element {
+  const d = props.dashboard;
+  return (
+    <>
+      <DashboardHeader dashboard={d} eyebrow="Deep diagnosis" period={props.period} title="Analytics" onPeriodChange={props.onPeriodChange} />
       <section className="dashboard-section">
         <h3>Setup Analytics</h3>
         <SetupAnalyticsPanel rows={d.setupAnalytics} />
       </section>
       <section className="dashboard-section">
-        <div className="dashboard-section-header">
-          <div>
-            <h3>Last N Closed Trades</h3>
-            <p className="muted">Most recent {d.lastNTrades.actualCount} fully closed entry trades</p>
-          </div>
-          <label className="period-selector">
-            <span>Sample</span>
-            <select value={props.lastNTradeCount} onChange={(event) => props.onLastNTradeCountChange(Number(event.target.value) as LastNTradeCount)}>
-              {lastNTradeOptions.map((option) => <option key={option.count} value={option.count}>{option.label}</option>)}
-            </select>
-          </label>
-        </div>
-        <div className="analytics-with-distribution">
-          <div className="analytics-main metric-grid">
-            <Metric label="P&L" value={money(d.lastNTrades.pnl)} tone={getNumberTone(d.lastNTrades.pnl)} />
-            <Metric label="Win rate" value={`${d.lastNTrades.winRate}%`} />
-            <Metric label="R Expectancy" value={formatR(d.lastNTrades.rExpectancy)} tone={getNumberTone(d.lastNTrades.rExpectancy)} />
-            <Metric label="Avg Winning R" value={formatR(d.lastNTrades.averageWinningR)} tone="good" />
-            <Metric label="Avg Losing R" value={formatR(d.lastNTrades.averageLosingR)} tone="bad" />
-            <Metric label="Expectancy Ex-Largest" value={formatR(d.lastNTrades.expectancyWithoutLargestWinner)} tone={getNumberTone(d.lastNTrades.expectancyWithoutLargestWinner)} />
-            <Metric label="Avg Winner Hold" value={formatHoldDays(d.lastNTrades.averageWinningHoldDays)} tone="good" />
-            <Metric label="Avg Loser Hold" value={formatHoldDays(d.lastNTrades.averageLosingHoldDays)} tone="bad" />
-          </div>
-          <div className="analytics-side">
-            <RDistributionPanel buckets={d.lastNTrades.rDistribution} subtitle={`${d.lastNTrades.actualCount} closed trades in this sample`} title="Last N R Distribution" />
-          </div>
-        </div>
+        <h3>R Distribution</h3>
+        <RDistributionPanel buckets={d.rDistribution} subtitle={`${getDistributionTotal(d.rDistribution)} closed trades in this period`} title="Period R Distribution" />
       </section>
+      <LastNClosedTradesSection dashboard={d} lastNTradeCount={props.lastNTradeCount} onLastNTradeCountChange={props.onLastNTradeCountChange} />
       <div className="split">
-        <section className="panel">
-          <h2>Execution Quality</h2>
-          <div className="two-col">
-            <Metric label="Rules followed P&L" value={money(d.ruleFollowedPnl)} />
-            <Metric label="Rules broken P&L" value={money(d.ruleBrokenPnl)} />
-            <Metric label="Best setup" value={d.bestSetup} />
-            <Metric label="Worst setup" value={d.worstSetup} />
-          </div>
-        </section>
-        <section className="panel">
-          <h2>Mistakes</h2>
-          {d.mistakeFrequency.length === 0 ? <p className="muted">No reviewed mistakes in this period.</p> : d.mistakeFrequency.map((item) => (
-            <div className="row" key={item.label}><span>{item.label}</span><strong>{item.count}</strong></div>
-          ))}
-        </section>
+        <ExecutionQualityPanel dashboard={d} />
+        <MistakesPanel dashboard={d} />
       </div>
     </>
+  );
+}
+
+function DashboardHeader(props: {
+  readonly dashboard: Dashboard;
+  readonly eyebrow: string;
+  readonly period: DashboardPeriodKey;
+  readonly title: string;
+  readonly onPeriodChange: (period: DashboardPeriodKey) => Promise<void>;
+}): JSX.Element {
+  return (
+    <header className="page-header dashboard-header">
+      <div>
+        <p className="eyebrow">{props.eyebrow}</p>
+        <h2>{props.title}</h2>
+        <p className="period-range">{formatPeriodRange(props.dashboard.period.startDate ?? props.dashboard.capitalHistoryStartDate, props.dashboard.period.endDate)}</p>
+      </div>
+      <label className="period-selector">
+        <span>Period</span>
+        <select value={props.period} onChange={(event) => props.onPeriodChange(event.target.value as DashboardPeriodKey)}>
+          {dashboardPeriodOptions.map((option) => <option key={option.key} value={option.key}>{option.label}</option>)}
+        </select>
+      </label>
+    </header>
+  );
+}
+
+function SetupPreviewPanel(props: { readonly rows: readonly SetupAnalyticsRow[] }): JSX.Element {
+  const previewRows: readonly SetupAnalyticsRow[] = props.rows.slice(0, 3);
+  if (previewRows.length === 0) {
+    return <section className="panel"><p className="muted">No closed setup data in this period.</p></section>;
+  }
+  return (
+    <section className="panel setup-preview-panel">
+      <div className="setup-preview-table">
+        <div className="setup-preview-head"><span>Setup</span><span>Trades</span><span>R Expectancy</span><span>P&L</span></div>
+        {previewRows.map((row: SetupAnalyticsRow) => (
+          <div className="setup-preview-row" key={row.setupName}>
+            <span><strong>{row.setupName}</strong></span>
+            <span>{row.closedTrades}</span>
+            <span className={getToneClass(row.rExpectancy)}>{formatR(row.rExpectancy)}</span>
+            <span className={getToneClass(row.pnl)}>{money(row.pnl)}</span>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function LastNClosedTradesSection(props: {
+  readonly dashboard: Dashboard;
+  readonly lastNTradeCount: LastNTradeCount;
+  readonly onLastNTradeCountChange: (count: LastNTradeCount) => Promise<void>;
+}): JSX.Element {
+  const d = props.dashboard;
+  return (
+    <section className="dashboard-section">
+      <div className="dashboard-section-header">
+        <div>
+          <h3>Last N Closed Trades</h3>
+          <p className="muted">Most recent {d.lastNTrades.actualCount} fully closed entry trades</p>
+        </div>
+        <label className="period-selector">
+          <span>Sample</span>
+          <select value={props.lastNTradeCount} onChange={(event) => props.onLastNTradeCountChange(Number(event.target.value) as LastNTradeCount)}>
+            {lastNTradeOptions.map((option) => <option key={option.count} value={option.count}>{option.label}</option>)}
+          </select>
+        </label>
+      </div>
+      <div className="analytics-with-distribution">
+        <div className="analytics-main metric-grid">
+          <Metric label="P&L" value={money(d.lastNTrades.pnl)} tone={getNumberTone(d.lastNTrades.pnl)} />
+          <Metric label="Win rate" value={`${d.lastNTrades.winRate}%`} />
+          <Metric label="R Expectancy" value={formatR(d.lastNTrades.rExpectancy)} tone={getNumberTone(d.lastNTrades.rExpectancy)} />
+          <Metric label="Avg Winning R" value={formatR(d.lastNTrades.averageWinningR)} tone="good" />
+          <Metric label="Avg Losing R" value={formatR(d.lastNTrades.averageLosingR)} tone="bad" />
+          <Metric label="Expectancy Ex-Largest" value={formatR(d.lastNTrades.expectancyWithoutLargestWinner)} tone={getNumberTone(d.lastNTrades.expectancyWithoutLargestWinner)} />
+          <Metric label="Avg Winner Hold" value={formatHoldDays(d.lastNTrades.averageWinningHoldDays)} tone="good" />
+          <Metric label="Avg Loser Hold" value={formatHoldDays(d.lastNTrades.averageLosingHoldDays)} tone="bad" />
+        </div>
+        <div className="analytics-side">
+          <RDistributionPanel buckets={d.lastNTrades.rDistribution} subtitle={`${d.lastNTrades.actualCount} closed trades in this sample`} title="Last N R Distribution" />
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function ExecutionQualityPanel(props: { readonly dashboard: Dashboard }): JSX.Element {
+  const d = props.dashboard;
+  return (
+    <section className="panel">
+      <h2>Execution Quality</h2>
+      <div className="two-col">
+        <Metric label="Rules followed P&L" value={money(d.ruleFollowedPnl)} />
+        <Metric label="Rules broken P&L" value={money(d.ruleBrokenPnl)} />
+        <Metric label="Best setup" value={d.bestSetup} />
+        <Metric label="Worst setup" value={d.worstSetup} />
+      </div>
+    </section>
+  );
+}
+
+function MistakesPanel(props: { readonly dashboard: Dashboard }): JSX.Element {
+  const d = props.dashboard;
+  return (
+    <section className="panel">
+      <h2>Mistakes</h2>
+      {d.mistakeFrequency.length === 0 ? <p className="muted">No reviewed mistakes in this period.</p> : d.mistakeFrequency.map((item) => (
+        <div className="row" key={item.label}><span>{item.label}</span><strong>{item.count}</strong></div>
+      ))}
+    </section>
   );
 }
 

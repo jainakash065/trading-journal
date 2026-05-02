@@ -15,6 +15,9 @@ The current app already tracks a strong base of performance metrics. The next ph
 
 Already implemented or substantially covered:
 
+- Dashboard/Analytics split:
+  - Dashboard is now the quick command center.
+  - Analytics is the deeper diagnosis area for setup, distribution, Last N, execution, and mistake analysis.
 - R expectancy.
 - Average winning R and average losing R.
 - Winner vs loser holding days.
@@ -163,7 +166,7 @@ Goal: learn when the system works and when it should be traded less.
 
 ## Recommended Build Order
 
-1. Setup-wise expectancy. Dashboard-level setup analytics implemented; dedicated setup page remains future scope.
+1. Setup-wise expectancy. Dashboard preview and Analytics-level setup table implemented; dedicated setup page remains future scope.
 2. Rule adherence analytics.
 3. Mistake impact analytics.
 4. MFE / MAE tracking.
@@ -181,6 +184,7 @@ Reasoning:
 
 ## Product Principles For This Roadmap
 
+- Keep Dashboard for monitoring and decision prompts; put deeper diagnostics in Analytics.
 - Prioritize risk-normalized metrics over rupee-only metrics for strategy quality.
 - Keep rupee metrics for capital/account tracking.
 - Avoid adding fields unless they create a clear future dashboard insight.

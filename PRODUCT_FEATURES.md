@@ -91,7 +91,6 @@ Future scope:
 - Dashboard-level unrealized P&L and total open portfolio valuation.
 - Portfolio-level open position valuation.
 - Capital allocation by setup, month, and financial year.
-- Capital curve chart in the UI.
 
 ## Risk And Position Sizing
 
@@ -372,6 +371,7 @@ Future scope:
 
 Implemented:
 
+- Dashboard is the quick command center, focused on monitoring what matters now instead of showing every diagnostic metric.
 - Dashboard period selector:
   - This month.
   - This week.
@@ -414,13 +414,25 @@ Implemented:
   - R Expectancy.
   - Average Winning R.
   - Average Losing R.
-  - Average Winner Hold days.
-  - Average Loser Hold days.
   - Median R.
-  - Largest Winner R.
   - Expectancy excluding largest winner.
+- Setup Edge Preview:
+  - Top three setups by R expectancy.
+  - Shows setup name, closed trade count, R expectancy, and P&L.
+
+## Analytics
+
+Implemented:
+
+- Analytics sidebar view for deeper diagnosis while keeping Dashboard lightweight.
+- Uses the same active period selector/date range as Dashboard.
+- Full Setup Analytics:
+  - Period-aware table showing setup quality from fully closed trades.
+  - Sorts setups by R expectancy, then trade count, then setup name.
+  - Groups trades without a setup as Unassigned.
+  - Shows closed trade count, win rate, R expectancy, average winning R, average losing R, median R, and total closed-trade P&L.
 - Period R Distribution:
-  - Visual horizontal bar panel grouped with Asymmetric Edge.
+  - Visual horizontal bar panel.
   - Shows R distribution for fully closed trades in the selected dashboard period.
   - Bars show count and percentage per bucket.
   - Bars scale relative to the largest bucket in the selected period.
@@ -441,10 +453,6 @@ Implemented:
   - Shows P&L, win rate, R expectancy, average winning R, average losing R, expectancy excluding largest winner, average winner hold days, and average loser hold days.
   - Includes a separate Last N R Distribution panel.
   - Last N analytics are independent of the selected dashboard period.
-- Setup Analytics:
-  - Period-aware table showing setup quality from fully closed trades.
-  - Sorts setups by R expectancy, then trade count, then setup name.
-  - Groups trades without a setup as Unassigned.
 - Execution Quality:
   - Rules followed P&L.
   - Rules broken P&L.
@@ -453,7 +461,7 @@ Implemented:
 - Mistakes:
   - Mistake frequency for selected period.
 
-Current dashboard rules:
+Current dashboard and analytics rules:
 
 - Closed-trade quality metrics are filtered by final exit date.
 - R Expectancy is the primary risk-normalized strategy-quality metric.
@@ -467,18 +475,21 @@ Current dashboard rules:
 - Capital is realized-only.
 - Open trade counts and open risk are current account snapshot values, not period-filtered values.
 - Open risk uses active stop loss and remaining quantity.
+- Deep diagnostics generally belong in Analytics, while Dashboard should stay short and action-oriented.
 
 Future scope:
 
 - Any FY selector.
 - Custom date range picker.
 - Save preferred dashboard period.
-- Dashboard charts:
+- Dashboard/analytics charts:
   - Monthly/weekly P&L bars.
   - Setup distribution.
   - Mistake trend.
   - Unrealized/mark-to-market equity curve.
 - Drill-down from dashboard cards to filtered trades.
+- Analytics tabs if the stacked Analytics page becomes too long.
+- Dedicated setup analytics page.
 - Expectancy trend by month, setup, and financial year.
 - Average R and Profit Factor in deeper analytics or money-focused reports.
 - Outlier sensitivity analysis beyond excluding the single largest winner.

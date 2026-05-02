@@ -411,6 +411,41 @@ nav {
   border-bottom: 0;
 }
 
+.setup-preview-panel {
+  overflow-x: auto;
+}
+
+.setup-preview-table {
+  min-width: 560px;
+}
+
+.setup-preview-head,
+.setup-preview-row {
+  align-items: center;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 1.5fr .6fr .9fr .9fr;
+  padding: 12px 0;
+}
+
+.setup-preview-head {
+  border-bottom: 1px solid #e2ddd2;
+  color: #56616a;
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.setup-preview-row {
+  border-bottom: 1px solid #ece7dd;
+  color: #1f2933;
+  font-size: 14px;
+}
+
+.setup-preview-row:last-child {
+  border-bottom: 0;
+}
+
 .good-text {
   color: #16803c;
   font-weight: 800;

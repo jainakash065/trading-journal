@@ -58,6 +58,7 @@ function migrate(db: Database.Database): void {
       entry_price REAL NOT NULL,
       quantity INTEGER NOT NULL,
       stop_loss REAL NOT NULL,
+      active_stop_loss REAL NOT NULL DEFAULT 0,
       risk_percentage REAL NOT NULL,
       risk_capital_base REAL NOT NULL DEFAULT 0,
       planned_risk_amount REAL NOT NULL,
@@ -126,7 +127,9 @@ function migrate(db: Database.Database): void {
     );
   `);
   addRiskCapitalBaseColumn(db);
+  addActiveStopLossColumn(db);
   backfillRiskCapitalBase(db);
+  backfillActiveStopLoss(db);
 }
 
 function addRiskCapitalBaseColumn(db: Database.Database): void {
@@ -148,6 +151,22 @@ function backfillRiskCapitalBase(db: Database.Database): void {
     END
     WHERE risk_capital_base IS NULL OR risk_capital_base = 0
   `).run(startingCapital);
+}
+
+function addActiveStopLossColumn(db: Database.Database): void {
+  const columns = db.prepare("PRAGMA table_info(trades)").all() as { readonly name: string }[];
+  const hasColumn: boolean = columns.some((column: { readonly name: string }) => column.name === "active_stop_loss");
+  if (!hasColumn) {
+    db.prepare("ALTER TABLE trades ADD COLUMN active_stop_loss REAL NOT NULL DEFAULT 0").run();
+  }
+}
+
+function backfillActiveStopLoss(db: Database.Database): void {
+  db.prepare(`
+    UPDATE trades
+    SET active_stop_loss = stop_loss
+    WHERE active_stop_loss IS NULL OR active_stop_loss = 0
+  `).run();
 }
 
 function seed(db: Database.Database): void {

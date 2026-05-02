@@ -2,7 +2,7 @@ import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
 import { buildDashboard, type Dashboard, type DashboardPeriodKey } from "../server/src/dashboard";
 import { initializeDatabase } from "../server/src/db";
-import { addExit, createTrade } from "../server/src/repository";
+import { addExit, createTrade, getTrade, updateActiveStopLoss } from "../server/src/repository";
 
 const dashboardToday: Date = new Date("2026-05-02T00:00:00Z");
 
@@ -83,6 +83,42 @@ describe("dashboard period metrics", () => {
     expect(dashboard.periodPnl).toBe(dashboard.periodClosedTradePnl);
     expect(dashboard.periodClosedTrades).toBe(1);
     expect(dashboard.openRiskExposure).toBe(825.3);
+  });
+
+  it("uses active stop loss for current open risk without changing original stop loss", () => {
+    const db: Database.Database = createDashboardDatabase();
+    const atherTradeId: number = createPartiallyExitedTrade(db);
+    createOpenTrade(db, {
+      symbol: "URBANCO",
+      entryPrice: 145.4467,
+      quantity: 688,
+      stopLoss: 141.8105
+    });
+    expect(getTrade(db, atherTradeId)?.activeStopLoss).toBe(766.35);
+    updateActiveStopLoss(db, { tradeId: atherTradeId, activeStopLoss: 786 });
+    const dashboard: Dashboard = buildDashboard(db, "last_month", dashboardToday);
+    expect(getTrade(db, atherTradeId)?.stopLoss).toBe(766.35);
+    expect(getTrade(db, atherTradeId)?.activeStopLoss).toBe(786);
+    expect(dashboard.openRiskExposure).toBe(2501.71);
+  });
+
+  it("caps open risk at zero when active stop is above entry", () => {
+    const db: Database.Database = createDashboardDatabase();
+    const tradeId: number = createOpenTrade(db, {
+      symbol: "TRAIL",
+      entryPrice: 100,
+      quantity: 10,
+      stopLoss: 90
+    });
+    updateActiveStopLoss(db, { tradeId, activeStopLoss: 105 });
+    const dashboard: Dashboard = buildDashboard(db, "last_month", dashboardToday);
+    expect(dashboard.openRiskExposure).toBe(0);
+  });
+
+  it("rejects active stop updates for closed trades", () => {
+    const db: Database.Database = createDashboardDatabase();
+    const tradeId: number = createMtarTechTrade(db);
+    expect(() => updateActiveStopLoss(db, { tradeId, activeStopLoss: 3685 })).toThrow("Active stop can only be updated for open trades");
   });
 
   it("uses booked exits for drawdown inside a winning trade with an early partial loss", () => {
@@ -258,6 +294,34 @@ function createClosedTradeWithFinalR(
   addExit(db, createExitInput({ tradeId, exitDate: params.exitDate, exitPrice, quantity }));
   db.prepare("UPDATE settings SET value = '2026-04-01' WHERE key = 'capitalHistoryStartDate'").run();
   return tradeId;
+}
+
+function createOpenTrade(
+  db: Database.Database,
+  params: {
+    readonly symbol: string;
+    readonly entryPrice: number;
+    readonly quantity: number;
+    readonly stopLoss: number;
+  }
+): number {
+  return createTrade(db, {
+    symbol: params.symbol,
+    market: "India",
+    direction: "Buy",
+    entryDate: "2026-04-09",
+    entryPrice: params.entryPrice,
+    quantity: params.quantity,
+    stopLoss: params.stopLoss,
+    riskPercentage: 0.5,
+    riskCapitalBase: 550000,
+    setupId: 1,
+    entryReason: "Open risk test",
+    emotionalState: "",
+    confidence: 3,
+    notes: "",
+    checklistResponses: []
+  });
 }
 
 function createExitInput(params: {

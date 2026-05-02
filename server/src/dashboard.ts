@@ -395,8 +395,8 @@ function getOpenRiskExposure(db: Database.Database): number {
   const row = db.prepare(`
     SELECT COALESCE(SUM(
       CASE
-        WHEN (t.entry_price - t.stop_loss) > 0
-        THEN (t.entry_price - t.stop_loss) * (t.quantity - COALESCE(x.exited_quantity, 0))
+        WHEN (t.entry_price - t.active_stop_loss) > 0
+        THEN (t.entry_price - t.active_stop_loss) * (t.quantity - COALESCE(x.exited_quantity, 0))
         ELSE 0
       END
     ), 0) AS total

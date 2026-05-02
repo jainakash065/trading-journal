@@ -37,6 +37,7 @@ type TradeFormState = {
   readonly stopLossPercentage: string;
   readonly stopLoss: string;
   readonly stopLossLastEdited: StopLossEditedField;
+  readonly activeStopLoss: string;
   readonly riskPercentage: string;
   readonly riskCapitalBase: string;
   readonly setupId: string;
@@ -284,6 +285,7 @@ function NewTradeView(props: { readonly data: AppData; readonly onSaved: () => P
     stopLossPercentage: "",
     stopLoss: "",
     stopLossLastEdited: "price" as StopLossEditedField,
+    activeStopLoss: "",
     riskPercentage: props.data.settings.defaultRiskPercentage ?? "1",
     riskCapitalBase: String(props.data.settings.currentCapital),
     setupId: "",
@@ -399,6 +401,8 @@ function TradeDetail(props: { readonly tradeId: number; readonly referenceData: 
   const [exitFileInputKey, setExitFileInputKey] = useState(0);
   const [exitForm, setExitForm] = useState<ExitFormState>(createEmptyExitForm);
   const [addExitSaving, setAddExitSaving] = useState(false);
+  const [activeStopLoss, setActiveStopLoss] = useState("");
+  const [activeStopSaving, setActiveStopSaving] = useState(false);
   const [editTradeOpen, setEditTradeOpen] = useState(false);
   const [editTradeFile, setEditTradeFile] = useState<File | null>(null);
   const [editTradeForm, setEditTradeForm] = useState<TradeFormState | null>(null);
@@ -418,6 +422,9 @@ function TradeDetail(props: { readonly tradeId: number; readonly referenceData: 
   const load = async (): Promise<void> => {
     const loaded = await apiGet<typeof detail>(`/api/trades/${props.tradeId}`);
     setDetail(loaded);
+    if (loaded?.trade) {
+      setActiveStopLoss(String(loaded.trade.activeStopLoss));
+    }
   };
   useEffect(() => {
     load().catch(console.error);
@@ -493,6 +500,23 @@ function TradeDetail(props: { readonly tradeId: number; readonly referenceData: 
       setAddExitSaving(false);
     }
   };
+  const activeStopSubmit = async (event: FormEvent): Promise<void> => {
+    event.preventDefault();
+    if (activeStopSaving) {
+      return;
+    }
+    setActiveStopSaving(true);
+    try {
+      await apiSend(`/api/trades/${props.tradeId}/active-stop`, "PATCH", { activeStopLoss: Number(activeStopLoss) });
+      await load();
+      await props.onChanged();
+    } finally {
+      setActiveStopSaving(false);
+    }
+  };
+  const moveActiveStopToBreakeven = (): void => {
+    setActiveStopLoss(String(detail.trade.entryPrice));
+  };
   const openTradeEditor = (): void => {
     setEditTradeForm({
       symbol: detail.trade.symbol,
@@ -504,6 +528,7 @@ function TradeDetail(props: { readonly tradeId: number; readonly referenceData: 
       stopLossPercentage: calculateStopLossPercentageText(String(detail.trade.entryPrice), String(detail.trade.stopLoss)),
       stopLoss: String(detail.trade.stopLoss),
       stopLossLastEdited: "price",
+      activeStopLoss: String(detail.trade.activeStopLoss),
       riskPercentage: String(detail.trade.riskPercentage),
       riskCapitalBase: String(detail.trade.riskCapitalBase),
       setupId: detail.trade.setupId ? String(detail.trade.setupId) : "",
@@ -530,6 +555,7 @@ function TradeDetail(props: { readonly tradeId: number; readonly referenceData: 
         entryPrice: Number(editTradeForm.entryPrice),
         quantity: Number(editTradeForm.quantity),
         stopLoss: Number(editTradeForm.stopLoss),
+        activeStopLoss: Number(editTradeForm.activeStopLoss),
         riskPercentage: Number(editTradeForm.riskPercentage),
         riskCapitalBase: Number(editTradeForm.riskCapitalBase),
         setupId: editTradeForm.setupId ? Number(editTradeForm.setupId) : null,
@@ -671,10 +697,24 @@ function TradeDetail(props: { readonly tradeId: number; readonly referenceData: 
         <Metric label="Planned risk" value={money(detail.trade.plannedRiskAmount)} />
         <Metric label="Actual risk" value={money(detail.trade.actualRisk)} />
         <Metric label="Risk used" value={`${detail.trade.riskUsedPercentage}%`} />
+        <Metric label="Initial SL" value={money(detail.trade.stopLoss)} />
+        <Metric label="Active SL" value={money(detail.trade.activeStopLoss)} />
+        <Metric label="Current open risk" value={money(calculateCurrentOpenRisk(detail.trade, detail.summary.remainingQuantity))} />
         <Metric label="Position value" value={money(detail.trade.positionValue)} />
         <Metric label="Position %" value={formatPercent(detail.trade.positionSizePercentage)} />
       </div>
       <ImageStrip screenshots={detail.screenshots} onPreview={setScreenshotPreview} />
+      {detail.trade.status !== "closed" ? (
+        <form className="compact-form" onSubmit={activeStopSubmit}>
+          <h3>Active Stop</h3>
+          <Input label="Active stop" type="number" value={activeStopLoss} onChange={setActiveStopLoss} required />
+          <div className="derived-metric"><span>Current open risk</span><strong>{money(calculateCurrentOpenRiskFromValue(detail.trade.entryPrice, Number(activeStopLoss), detail.summary.remainingQuantity))}</strong></div>
+          <div className="form-actions">
+            <button className="primary" disabled={activeStopSaving} type="submit">{activeStopSaving ? "Saving..." : "Save Active Stop"}</button>
+            <button className="secondary" onClick={moveActiveStopToBreakeven} type="button">Move to Breakeven</button>
+          </div>
+        </form>
+      ) : null}
       {editTradeOpen && editTradeForm ? (
         <form className="compact-form" onSubmit={editTradeSubmit}>
           <h3>Edit Trade</h3>
@@ -688,6 +728,7 @@ function TradeDetail(props: { readonly tradeId: number; readonly referenceData: 
             onPercentageChange={(value) => setEditTradeForm(updateStopLossPercentage(editTradeForm, value))}
             onPriceChange={(value) => setEditTradeForm(updateStopLossPrice(editTradeForm, value))}
           />
+          <Input label="Active stop" type="number" value={editTradeForm.activeStopLoss} onChange={(value) => setEditTradeForm({ ...editTradeForm, activeStopLoss: value })} required />
           <Input label="Risk %" type="number" value={editTradeForm.riskPercentage} onChange={(value) => setEditTradeForm({ ...editTradeForm, riskPercentage: value })} required />
           <Input label="Risk capital base" type="number" value={editTradeForm.riskCapitalBase} onChange={(value) => setEditTradeForm({ ...editTradeForm, riskCapitalBase: value })} required />
           <div className="derived-metric"><span>Planned risk</span><strong>{money(Number(editTradeForm.riskCapitalBase) * (Number(editTradeForm.riskPercentage) / 100))}</strong></div>
@@ -992,6 +1033,17 @@ function formatRiskUsed(form: TradeFormState): string {
     return "0.00";
   }
   return ((actualRisk / plannedRisk) * 100).toFixed(2);
+}
+
+function calculateCurrentOpenRisk(trade: Trade, remainingQuantity: number): number {
+  return calculateCurrentOpenRiskFromValue(trade.entryPrice, trade.activeStopLoss, remainingQuantity);
+}
+
+function calculateCurrentOpenRiskFromValue(entryPrice: number, activeStopLoss: number, remainingQuantity: number): number {
+  if (!Number.isFinite(activeStopLoss)) {
+    return 0;
+  }
+  return Math.max(entryPrice - activeStopLoss, 0) * remainingQuantity;
 }
 
 function getReviewSaveButtonLabel(status: ReviewSaveStatus): string {

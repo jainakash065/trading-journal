@@ -24,6 +24,7 @@ type TradeInput = {
   readonly entryPrice: number;
   readonly quantity: number;
   readonly stopLoss: number;
+  readonly activeStopLoss?: number;
   readonly riskPercentage: number;
   readonly riskCapitalBase: number;
   readonly setupId: number | null;
@@ -90,9 +91,9 @@ export function createTrade(db: Database.Database, input: TradeInput): number {
   const transaction = db.transaction((): number => {
     const result = db.prepare(`
       INSERT INTO trades (
-        symbol, market, direction, entry_date, entry_price, quantity, stop_loss, risk_percentage,
+        symbol, market, direction, entry_date, entry_price, quantity, stop_loss, active_stop_loss, risk_percentage,
         risk_capital_base, planned_risk_amount, setup_id, entry_reason, emotional_state, confidence, notes
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       input.symbol.toUpperCase(),
       input.market,
@@ -101,6 +102,7 @@ export function createTrade(db: Database.Database, input: TradeInput): number {
       input.entryPrice,
       input.quantity,
       input.stopLoss,
+      getActiveStopLossValue(input.activeStopLoss, input.stopLoss),
       input.riskPercentage,
       input.riskCapitalBase,
       calculatePlannedRiskAmount(input),
@@ -132,7 +134,7 @@ export function updateTrade(db: Database.Database, tradeId: number, input: Trade
     db.prepare(`
       UPDATE trades SET
         symbol = ?, market = ?, direction = ?, entry_date = ?, entry_price = ?, quantity = ?,
-        stop_loss = ?, risk_percentage = ?, risk_capital_base = ?, planned_risk_amount = ?, setup_id = ?,
+        stop_loss = ?, active_stop_loss = ?, risk_percentage = ?, risk_capital_base = ?, planned_risk_amount = ?, setup_id = ?,
         entry_reason = ?, emotional_state = ?, confidence = ?, notes = ?
       WHERE id = ?
     `).run(
@@ -143,6 +145,7 @@ export function updateTrade(db: Database.Database, tradeId: number, input: Trade
       input.entryPrice,
       input.quantity,
       input.stopLoss,
+      getActiveStopLossValue(input.activeStopLoss, trade.activeStopLoss),
       input.riskPercentage,
       input.riskCapitalBase,
       calculatePlannedRiskAmount(input),
@@ -165,7 +168,7 @@ export function listTrades(db: Database.Database, closed: boolean): readonly Tra
   const operator: string = closed ? "=" : "!=";
   return db.prepare(`
     SELECT t.id, t.symbol, t.market, t.direction, t.entry_date AS entryDate, t.entry_price AS entryPrice,
-      t.quantity, t.stop_loss AS stopLoss, t.risk_percentage AS riskPercentage,
+      t.quantity, t.stop_loss AS stopLoss, t.active_stop_loss AS activeStopLoss, t.risk_percentage AS riskPercentage,
       t.risk_capital_base AS riskCapitalBase, t.planned_risk_amount AS plannedRiskAmount,
       ROUND(t.entry_price * t.quantity, 2) AS positionValue,
       CASE WHEN t.risk_capital_base > 0 THEN ROUND(((t.entry_price * t.quantity) / t.risk_capital_base) * 100, 2) ELSE 0 END AS positionSizePercentage,
@@ -184,7 +187,7 @@ export function listTrades(db: Database.Database, closed: boolean): readonly Tra
 export function getTrade(db: Database.Database, tradeId: number): TradeRow | undefined {
   return db.prepare(`
     SELECT t.id, t.symbol, t.market, t.direction, t.entry_date AS entryDate, t.entry_price AS entryPrice,
-      t.quantity, t.stop_loss AS stopLoss, t.risk_percentage AS riskPercentage,
+      t.quantity, t.stop_loss AS stopLoss, t.active_stop_loss AS activeStopLoss, t.risk_percentage AS riskPercentage,
       t.risk_capital_base AS riskCapitalBase, t.planned_risk_amount AS plannedRiskAmount,
       ROUND(t.entry_price * t.quantity, 2) AS positionValue,
       CASE WHEN t.risk_capital_base > 0 THEN ROUND(((t.entry_price * t.quantity) / t.risk_capital_base) * 100, 2) ELSE 0 END AS positionSizePercentage,
@@ -273,6 +276,31 @@ export function updateExit(db: Database.Database, params: {
     updateTradeStatus(db, trade);
   });
   transaction();
+}
+
+export function updateActiveStopLoss(db: Database.Database, params: {
+  readonly tradeId: number;
+  readonly activeStopLoss: number;
+}): void {
+  if (params.activeStopLoss <= 0) {
+    throw new Error("Active stop must be positive");
+  }
+  const trade: TradeRow = getRequiredTrade(db, params.tradeId);
+  if (trade.status === "closed") {
+    throw new Error("Active stop can only be updated for open trades");
+  }
+  const result = db.prepare("UPDATE trades SET active_stop_loss = ? WHERE id = ?").run(params.activeStopLoss, params.tradeId);
+  if (result.changes === 0) {
+    throw new Error("Trade not found");
+  }
+}
+
+function getActiveStopLossValue(activeStopLoss: number | undefined, fallback: number): number {
+  const value: number = activeStopLoss ?? fallback;
+  if (value <= 0) {
+    throw new Error("Active stop must be positive");
+  }
+  return value;
 }
 
 export function backfillExitRMultiples(db: Database.Database): void {

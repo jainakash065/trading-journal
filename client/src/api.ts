@@ -11,7 +11,7 @@ export async function apiGet<T>(path: string): Promise<T> {
   return parseResponse<T>(response);
 }
 
-export async function apiSend<T>(path: string, method: "POST" | "PUT", body: unknown): Promise<T> {
+export async function apiSend<T>(path: string, method: "POST" | "PUT" | "PATCH", body: unknown): Promise<T> {
   const response: Response = await fetch(path, {
     method,
     headers: { "Content-Type": "application/json" },

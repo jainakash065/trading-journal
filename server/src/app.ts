@@ -24,6 +24,7 @@ import {
   listTrades,
   saveScreenshot,
   updateExit,
+  updateActiveStopLoss,
   updateReview,
   updateSettings,
   updateTrade,
@@ -41,6 +42,7 @@ const tradeSchema = z.object({
   entryPrice: z.coerce.number().positive(),
   quantity: z.coerce.number().int().positive(),
   stopLoss: z.coerce.number().positive(),
+  activeStopLoss: z.coerce.number().positive().optional(),
   riskPercentage: z.coerce.number().nonnegative(),
   riskCapitalBase: z.coerce.number().nonnegative(),
   setupId: z.coerce.number().int().nullable(),
@@ -62,6 +64,10 @@ const exitSchema = z.object({
   reason: z.string().default(""),
   emotionalState: z.string().default(""),
   notes: z.string().default("")
+});
+
+const activeStopSchema = z.object({
+  activeStopLoss: z.coerce.number().positive()
 });
 
 const reviewSchema = z.object({
@@ -151,6 +157,10 @@ export function createApp(): express.Express {
   });
   app.put("/api/trades/:id", (request: Request, response: Response) => {
     updateTrade(db, Number(request.params.id), tradeSchema.parse(request.body));
+    response.json({ ok: true });
+  });
+  app.patch("/api/trades/:id/active-stop", (request: Request, response: Response) => {
+    updateActiveStopLoss(db, { tradeId: Number(request.params.id), ...activeStopSchema.parse(request.body) });
     response.json({ ok: true });
   });
   app.post("/api/trades/:id/exits", (request: Request, response: Response) => {

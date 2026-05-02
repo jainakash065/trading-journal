@@ -9,6 +9,7 @@ export type TradeRow = {
   readonly entryPrice: number;
   readonly quantity: number;
   readonly stopLoss: number;
+  readonly activeStopLoss: number;
   readonly riskPercentage: number;
   readonly riskCapitalBase: number;
   readonly plannedRiskAmount: number;

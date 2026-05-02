@@ -1,6 +1,6 @@
 import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
-import { buildDashboard, type Dashboard, type DashboardPeriodKey } from "../server/src/dashboard";
+import { buildDashboard, parseLastNTradeCount, type Dashboard, type DashboardPeriodKey } from "../server/src/dashboard";
 import { initializeDatabase } from "../server/src/db";
 import { addExit, createTrade, getTrade, updateActiveStopLoss, updateCurrentPrice } from "../server/src/repository";
 
@@ -219,6 +219,59 @@ describe("dashboard period metrics", () => {
 
     expect(dashboard.averageWinningHoldDays).toBe(3);
     expect(dashboard.averageLosingHoldDays).toBe(2);
+  });
+
+  it("defaults and validates last N closed trade sample size", () => {
+    expect(parseLastNTradeCount(undefined)).toBe(20);
+    expect(parseLastNTradeCount("abc")).toBe(20);
+    expect(parseLastNTradeCount("10")).toBe(10);
+    expect(parseLastNTradeCount("50")).toBe(50);
+  });
+
+  it("calculates last N analytics from the most recent closed entry trades", () => {
+    const db: Database.Database = createDashboardDatabase();
+    for (let index = 1; index <= 12; index += 1) {
+      const day: string = String(index).padStart(2, "0");
+      createClosedTradeWithFinalR(db, { symbol: `CLOSED${day}`, finalR: 1, entryDate: `2026-04-${day}`, exitDate: `2026-04-${day}` });
+    }
+    createPartiallyExitedTrade(db);
+
+    const dashboard: Dashboard = buildDashboard(db, "last_month", dashboardToday, 10);
+
+    expect(dashboard.lastNTrades.selectedN).toBe(10);
+    expect(dashboard.lastNTrades.actualCount).toBe(10);
+    expect(dashboard.lastNTrades.pnl).toBe(1000);
+    expect(dashboard.lastNTrades.winRate).toBe(100);
+    expect(dashboard.lastNTrades.averageR).toBe(1);
+    expect(dashboard.lastNTrades.rExpectancy).toBe(1);
+    expect(dashboard.lastNTrades.profitFactor).toBe(1000);
+    expect(dashboard.lastNTrades.averageWinningR).toBe(1);
+    expect(dashboard.lastNTrades.averageLosingR).toBe(0);
+    expect(dashboard.lastNTrades.averageWinningHoldDays).toBe(1);
+    expect(dashboard.lastNTrades.averageLosingHoldDays).toBe(0);
+    expect(dashboard.lastNTrades.rDistribution).toEqual([
+      { label: "<= -1R", count: 0 },
+      { label: "-1R to 0R", count: 0 },
+      { label: "0R to 1R", count: 0 },
+      { label: "1R to 3R", count: 10 },
+      { label: "3R to 5R", count: 0 },
+      { label: "> 5R", count: 0 }
+    ]);
+    expect(dashboard.periodClosedTrades).toBe(12);
+  });
+
+  it("keeps last N analytics independent from the selected dashboard period", () => {
+    const db: Database.Database = createDashboardDatabase();
+    createMtarTechTrade(db);
+
+    const dashboard: Dashboard = buildDashboard(db, "this_month", dashboardToday, 20);
+
+    expect(dashboard.periodClosedTrades).toBe(0);
+    expect(dashboard.periodClosedTradePnl).toBe(0);
+    expect(dashboard.lastNTrades.selectedN).toBe(20);
+    expect(dashboard.lastNTrades.actualCount).toBe(1);
+    expect(dashboard.lastNTrades.pnl).toBe(16556.4);
+    expect(dashboard.lastNTrades.averageR).toBe(11.23);
   });
 
   it("infers capital history start date for existing journal data", () => {

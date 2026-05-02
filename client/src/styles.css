@@ -105,6 +105,17 @@ nav {
   margin: 0;
 }
 
+.dashboard-section-header {
+  align-items: end;
+  display: flex;
+  gap: 18px;
+  justify-content: space-between;
+}
+
+.dashboard-section-header .muted {
+  margin: 6px 0 0;
+}
+
 .info-note {
   background: #f1eee7;
   border: 1px solid #e2ddd2;
@@ -719,6 +730,10 @@ small {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .dashboard-header {
+    align-items: stretch;
+    display: grid;
+  }
+  .dashboard-section-header {
     align-items: stretch;
     display: grid;
   }

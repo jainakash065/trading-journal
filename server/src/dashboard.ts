@@ -22,6 +22,7 @@ type RealizedExitMetric = {
 };
 
 export type DashboardPeriodKey = "all_time" | "current_fy" | "last_fy" | "this_month" | "last_month" | "this_week";
+export type LastNTradeCount = 10 | 20 | 50;
 
 type DashboardPeriod = {
   readonly key: DashboardPeriodKey;
@@ -54,6 +55,22 @@ type RAnalytics = {
   readonly medianR: number;
   readonly largestWinnerR: number;
   readonly expectancyWithoutLargestWinner: number;
+  readonly rDistribution: readonly RDistributionBucket[];
+};
+
+type LastNTradesAnalytics = {
+  readonly selectedN: LastNTradeCount;
+  readonly actualCount: number;
+  readonly pnl: number;
+  readonly winRate: number;
+  readonly averageR: number;
+  readonly rExpectancy: number;
+  readonly profitFactor: number;
+  readonly averageWinningR: number;
+  readonly averageLosingR: number;
+  readonly expectancyWithoutLargestWinner: number;
+  readonly averageWinningHoldDays: number;
+  readonly averageLosingHoldDays: number;
   readonly rDistribution: readonly RDistributionBucket[];
 };
 
@@ -99,15 +116,17 @@ export type Dashboard = {
   readonly ruleBrokenPnl: number;
   readonly mistakeFrequency: readonly { readonly label: string; readonly count: number }[];
   readonly capitalCurve: readonly { readonly date: string; readonly capital: number }[];
+  readonly lastNTrades: LastNTradesAnalytics;
 };
 
-export function buildDashboard(db: Database.Database, periodKey: DashboardPeriodKey = "this_month", today: Date = new Date()): Dashboard {
+export function buildDashboard(db: Database.Database, periodKey: DashboardPeriodKey = "this_month", today: Date = new Date(), lastN: LastNTradeCount = 20): Dashboard {
   const settings: Record<string, string> = getSettings(db);
   const startingCapital: number = Number(settings.startingCapital ?? 0);
   const todayText: string = formatDate(today);
   const capitalHistoryStartDate: string = settings.capitalHistoryStartDate ?? todayText;
   const period: DashboardPeriod = getDashboardPeriod(periodKey, today);
   const closedTrades: readonly ClosedTradeMetric[] = listClosedTradeMetrics(db);
+  const lastNTrades: LastNTradesAnalytics = calculateLastNTradesAnalytics(selectLastNClosedTrades(closedTrades, lastN), lastN);
   const realizedExits: readonly RealizedExitMetric[] = listRealizedExitMetrics(db);
   const periodTrades: readonly ClosedTradeMetric[] = filterTradesByPeriod(closedTrades, period);
   const periodExits: readonly RealizedExitMetric[] = filterExitsByPeriod(realizedExits, period);
@@ -164,7 +183,8 @@ export function buildDashboard(db: Database.Database, periodKey: DashboardPeriod
     ruleFollowedPnl: round(periodTrades.filter((trade: ClosedTradeMetric) => trade.followedPlan === 1).reduce((total: number, trade: ClosedTradeMetric) => total + trade.realizedPnl, 0)),
     ruleBrokenPnl: round(periodTrades.filter((trade: ClosedTradeMetric) => trade.followedPlan === 0).reduce((total: number, trade: ClosedTradeMetric) => total + trade.realizedPnl, 0)),
     mistakeFrequency: getMistakeFrequency(db, period),
-    capitalCurve: buildCapitalCurve({ db, startingCapital })
+    capitalCurve: buildCapitalCurve({ db, startingCapital }),
+    lastNTrades
   };
 }
 
@@ -174,6 +194,14 @@ export function parseDashboardPeriodKey(value: unknown): DashboardPeriodKey {
     return key;
   }
   return "this_month";
+}
+
+export function parseLastNTradeCount(value: unknown): LastNTradeCount {
+  const count: number = typeof value === "string" ? Number(value) : 20;
+  if (count === 10 || count === 20 || count === 50) {
+    return count;
+  }
+  return 20;
 }
 
 function listClosedTradeMetrics(db: Database.Database): readonly ClosedTradeMetric[] {
@@ -243,6 +271,35 @@ function calculateRAnalytics(trades: readonly ClosedTradeMetric[]): RAnalytics {
     largestWinnerR: winningRValues.length > 0 ? round(Math.max(...winningRValues)) : 0,
     expectancyWithoutLargestWinner: calculateExpectancyWithoutLargestWinner(rValues),
     rDistribution: calculateRDistribution(rValues)
+  };
+}
+
+function selectLastNClosedTrades(trades: readonly ClosedTradeMetric[], selectedN: LastNTradeCount): readonly ClosedTradeMetric[] {
+  return [...trades]
+    .sort((first: ClosedTradeMetric, second: ClosedTradeMetric) => second.closedDate.localeCompare(first.closedDate) || second.id - first.id)
+    .slice(0, selectedN);
+}
+
+function calculateLastNTradesAnalytics(trades: readonly ClosedTradeMetric[], selectedN: LastNTradeCount): LastNTradesAnalytics {
+  const rAnalytics: RAnalytics = calculateRAnalytics(trades);
+  const winners: readonly ClosedTradeMetric[] = trades.filter((trade: ClosedTradeMetric) => trade.realizedPnl > 0);
+  const losers: readonly ClosedTradeMetric[] = trades.filter((trade: ClosedTradeMetric) => trade.realizedPnl < 0);
+  const grossProfit: number = winners.reduce((total: number, trade: ClosedTradeMetric) => total + trade.realizedPnl, 0);
+  const grossLoss: number = Math.abs(losers.reduce((total: number, trade: ClosedTradeMetric) => total + trade.realizedPnl, 0));
+  return {
+    selectedN,
+    actualCount: trades.length,
+    pnl: round(trades.reduce((total: number, trade: ClosedTradeMetric) => total + trade.realizedPnl, 0)),
+    winRate: trades.length > 0 ? round((winners.length / trades.length) * 100) : 0,
+    averageR: average(trades.map((trade: ClosedTradeMetric) => trade.finalR)),
+    rExpectancy: rAnalytics.rExpectancy,
+    profitFactor: grossLoss > 0 ? round(grossProfit / grossLoss) : round(grossProfit),
+    averageWinningR: rAnalytics.averageWinningR,
+    averageLosingR: rAnalytics.averageLosingR,
+    expectancyWithoutLargestWinner: rAnalytics.expectancyWithoutLargestWinner,
+    averageWinningHoldDays: rAnalytics.averageWinningHoldDays,
+    averageLosingHoldDays: rAnalytics.averageLosingHoldDays,
+    rDistribution: rAnalytics.rDistribution
   };
 }
 

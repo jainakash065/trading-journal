@@ -73,6 +73,7 @@ export type TradeExit = {
 };
 
 export type DashboardPeriodKey = "all_time" | "current_fy" | "last_fy" | "this_month" | "last_month" | "this_week";
+export type LastNTradeCount = 10 | 20 | 50;
 
 export type DashboardPeriod = {
   readonly key: DashboardPeriodKey;
@@ -84,6 +85,22 @@ export type DashboardPeriod = {
 export type RDistributionBucket = {
   readonly label: string;
   readonly count: number;
+};
+
+export type LastNTradesAnalytics = {
+  readonly selectedN: LastNTradeCount;
+  readonly actualCount: number;
+  readonly pnl: number;
+  readonly winRate: number;
+  readonly averageR: number;
+  readonly rExpectancy: number;
+  readonly profitFactor: number;
+  readonly averageWinningR: number;
+  readonly averageLosingR: number;
+  readonly expectancyWithoutLargestWinner: number;
+  readonly averageWinningHoldDays: number;
+  readonly averageLosingHoldDays: number;
+  readonly rDistribution: readonly RDistributionBucket[];
 };
 
 export type Dashboard = {
@@ -128,4 +145,5 @@ export type Dashboard = {
   readonly ruleBrokenPnl: number;
   readonly mistakeFrequency: readonly { readonly label: string; readonly count: number }[];
   readonly capitalCurve: readonly { readonly date: string; readonly capital: number }[];
+  readonly lastNTrades: LastNTradesAnalytics;
 };

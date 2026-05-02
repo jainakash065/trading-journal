@@ -1,7 +1,7 @@
 import { Activity, BarChart3, BookOpen, ClipboardCheck, IndianRupee, Pencil, Plus, Settings as SettingsIcon, Trash2, X } from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
 import { apiDelete, apiGet, apiSend, endpoints, type AppData, type ReferenceData, uploadScreenshot } from "./api";
-import type { Dashboard, DashboardPeriodKey, RDistributionBucket, Settings, Trade, TradeExit } from "./types";
+import type { Dashboard, DashboardPeriodKey, LastNTradeCount, RDistributionBucket, Settings, Trade, TradeExit } from "./types";
 
 type View = "dashboard" | "new" | "open" | "closed" | "settings";
 
@@ -15,6 +15,12 @@ const dashboardPeriodOptions: readonly { readonly key: DashboardPeriodKey; reado
   { key: "current_fy", label: "Current FY" },
   { key: "last_fy", label: "Last FY" },
   { key: "all_time", label: "All time" }
+];
+const defaultLastNTradeCount: LastNTradeCount = 20;
+const lastNTradeOptions: readonly { readonly count: LastNTradeCount; readonly label: string }[] = [
+  { count: 10, label: "Last 10" },
+  { count: 20, label: "Last 20" },
+  { count: 50, label: "Last 50" }
 ];
 
 type StopLossEditedField = "percentage" | "price";
@@ -71,12 +77,13 @@ function createEmptyExitForm(): ExitFormState {
 export function App(): JSX.Element {
   const [view, setView] = useState<View>("dashboard");
   const [dashboardPeriod, setDashboardPeriod] = useState<DashboardPeriodKey>(defaultDashboardPeriod);
+  const [lastNTradeCount, setLastNTradeCount] = useState<LastNTradeCount>(defaultLastNTradeCount);
   const [data, setData] = useState<AppData | null>(null);
   const [selectedTradeId, setSelectedTradeId] = useState<number | null>(null);
   const [toast, setToast] = useState<ToastState | null>(null);
   const reload = async (): Promise<void> => {
     const [dashboard, settings, referenceData, openTrades, closedTrades] = await Promise.all([
-      apiGet<Dashboard>(endpoints.dashboard(dashboardPeriod)),
+      apiGet<Dashboard>(endpoints.dashboard(dashboardPeriod, lastNTradeCount)),
       apiGet<Settings>(endpoints.settings),
       apiGet<ReferenceData>(endpoints.referenceData),
       apiGet<readonly Trade[]>(endpoints.openTrades),
@@ -93,10 +100,19 @@ export function App(): JSX.Element {
   const changeDashboardPeriod = async (period: DashboardPeriodKey): Promise<void> => {
     setDashboardPeriod(period);
     try {
-      const dashboard: Dashboard = await apiGet<Dashboard>(endpoints.dashboard(period));
+      const dashboard: Dashboard = await apiGet<Dashboard>(endpoints.dashboard(period, lastNTradeCount));
       setData((current: AppData | null) => current ? { ...current, dashboard } : current);
     } catch (error: unknown) {
       showToast(error instanceof Error ? error.message : "Unable to load dashboard", "error");
+    }
+  };
+  const changeLastNTradeCount = async (count: LastNTradeCount): Promise<void> => {
+    setLastNTradeCount(count);
+    try {
+      const dashboard: Dashboard = await apiGet<Dashboard>(endpoints.dashboard(dashboardPeriod, count));
+      setData((current: AppData | null) => current ? { ...current, dashboard } : current);
+    } catch (error: unknown) {
+      showToast(error instanceof Error ? error.message : "Unable to load last N trades", "error");
     }
   };
   useEffect(() => {
@@ -129,7 +145,7 @@ export function App(): JSX.Element {
       </aside>
       <section className="workspace">
         {toast ? <Toast message={toast.message} tone={toast.tone} onDismiss={clearToast} /> : null}
-        {view === "dashboard" ? <DashboardView dashboard={data.dashboard} period={dashboardPeriod} onPeriodChange={changeDashboardPeriod} /> : null}
+        {view === "dashboard" ? <DashboardView dashboard={data.dashboard} lastNTradeCount={lastNTradeCount} period={dashboardPeriod} onLastNTradeCountChange={changeLastNTradeCount} onPeriodChange={changeDashboardPeriod} /> : null}
         {view === "new" ? <NewTradeView data={data} onSaved={async () => { await reload(); setView("open"); showToast("Trade saved"); }} /> : null}
         {view === "open" ? <TradesView mode="open" title="Open Trades" trades={data.openTrades} onSelect={setSelectedTradeId} /> : null}
         {view === "closed" ? <TradesView mode="closed" title="Closed Trades" trades={data.closedTrades} onSelect={setSelectedTradeId} /> : null}
@@ -182,7 +198,9 @@ function NavButton(props: { readonly active: boolean; readonly icon: JSX.Element
 
 function DashboardView(props: {
   readonly dashboard: Dashboard;
+  readonly lastNTradeCount: LastNTradeCount;
   readonly period: DashboardPeriodKey;
+  readonly onLastNTradeCountChange: (count: LastNTradeCount) => Promise<void>;
   readonly onPeriodChange: (period: DashboardPeriodKey) => Promise<void>;
 }): JSX.Element {
   const d = props.dashboard;
@@ -250,6 +268,33 @@ function DashboardView(props: {
           <Metric label="Expectancy Ex-Largest" value={formatR(d.expectancyWithoutLargestWinner)} tone={getNumberTone(d.expectancyWithoutLargestWinner)} />
         </div>
       </section>
+      <section className="dashboard-section">
+        <div className="dashboard-section-header">
+          <div>
+            <h3>Last N Closed Trades</h3>
+            <p className="muted">Most recent {d.lastNTrades.actualCount} fully closed entry trades</p>
+          </div>
+          <label className="period-selector">
+            <span>Sample</span>
+            <select value={props.lastNTradeCount} onChange={(event) => props.onLastNTradeCountChange(Number(event.target.value) as LastNTradeCount)}>
+              {lastNTradeOptions.map((option) => <option key={option.count} value={option.count}>{option.label}</option>)}
+            </select>
+          </label>
+        </div>
+        <div className="metric-grid">
+          <Metric label="P&L" value={money(d.lastNTrades.pnl)} tone={getNumberTone(d.lastNTrades.pnl)} />
+          <Metric label="Win rate" value={`${d.lastNTrades.winRate}%`} />
+          <Metric label="Average R" value={formatR(d.lastNTrades.averageR)} tone={getNumberTone(d.lastNTrades.averageR)} />
+          <Metric label="R Expectancy" value={formatR(d.lastNTrades.rExpectancy)} tone={getNumberTone(d.lastNTrades.rExpectancy)} />
+          <Metric label="Profit factor" value={String(d.lastNTrades.profitFactor)} />
+          <Metric label="Avg Winning R" value={formatR(d.lastNTrades.averageWinningR)} tone="good" />
+          <Metric label="Avg Losing R" value={formatR(d.lastNTrades.averageLosingR)} tone="bad" />
+          <Metric label="Expectancy Ex-Largest" value={formatR(d.lastNTrades.expectancyWithoutLargestWinner)} tone={getNumberTone(d.lastNTrades.expectancyWithoutLargestWinner)} />
+          <Metric label="Avg Winner Hold" value={formatHoldDays(d.lastNTrades.averageWinningHoldDays)} tone="good" />
+          <Metric label="Avg Loser Hold" value={formatHoldDays(d.lastNTrades.averageLosingHoldDays)} tone="bad" />
+        </div>
+        <RDistributionPanel buckets={d.lastNTrades.rDistribution} subtitle={`${d.lastNTrades.actualCount} closed trades in this sample`} />
+      </section>
       <div className="split">
         <section className="panel">
           <h2>Execution Quality</h2>
@@ -266,19 +311,19 @@ function DashboardView(props: {
             <div className="row" key={item.label}><span>{item.label}</span><strong>{item.count}</strong></div>
           ))}
         </section>
-        <RDistributionPanel buckets={d.rDistribution} />
+        <RDistributionPanel buckets={d.rDistribution} subtitle={`${getDistributionTotal(d.rDistribution)} closed trades in this period`} />
       </div>
     </>
   );
 }
 
-function RDistributionPanel(props: { readonly buckets: readonly RDistributionBucket[] }): JSX.Element {
+function RDistributionPanel(props: { readonly buckets: readonly RDistributionBucket[]; readonly subtitle: string }): JSX.Element {
   const totalCount: number = getDistributionTotal(props.buckets);
   const maxCount: number = getDistributionMax(props.buckets);
   return (
     <section className="panel">
       <h2>R Distribution</h2>
-      <p className="muted">{totalCount} closed trades in this period</p>
+      <p className="muted">{props.subtitle}</p>
       <div className="distribution-list">
         {props.buckets.map((bucket: RDistributionBucket) => (
           <div className="distribution-row" key={bucket.label}>

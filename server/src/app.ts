@@ -3,7 +3,7 @@ import express, { type Request, type Response } from "express";
 import multer from "multer";
 import path from "node:path";
 import { z } from "zod";
-import { buildDashboard, parseDashboardPeriodKey } from "./dashboard";
+import { buildDashboard, parseDashboardPeriodKey, parseLastNTradeCount } from "./dashboard";
 import { createDatabase } from "./db";
 import { entryScreenshotDir, exitScreenshotDir } from "./paths";
 import {
@@ -210,7 +210,7 @@ export function createApp(): express.Express {
     response.status(201).json({ ok: true });
   });
   app.get("/api/dashboard", (request: Request, response: Response) => {
-    response.json(buildDashboard(db, parseDashboardPeriodKey(request.query.period)));
+    response.json(buildDashboard(db, parseDashboardPeriodKey(request.query.period), new Date(), parseLastNTradeCount(request.query.lastN)));
   });
   app.use((error: unknown, _request: Request, response: Response, _next: express.NextFunction) => {
     const message: string = error instanceof Error ? error.message : "Unexpected server error";

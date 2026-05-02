@@ -78,6 +78,8 @@ Future scope:
 - Net realized P&L after brokerage, STT, exchange charges, GST, stamp duty, and other fees.
 - Gross vs net P&L comparison per exit, trade, period, setup, and dashboard.
 - Contract-note or broker-file reconciliation for charges and taxes.
+- Capital gains tax tracking for intraday and short-term holdings.
+- No LTCG workflow needed for the primary use case because trades are intraday or held only for a few days.
 - Mark-to-market unrealized P&L.
 - Portfolio-level open position valuation.
 - Capital allocation by setup, month, and financial year.
@@ -534,6 +536,7 @@ trading-journal-backup-2026-05-01.zip
 - Unrealized P&L tracking.
 - Broker contract note import.
 - Brokerage, taxes, charges, and net P&L tracking.
+- Intraday/STCG tax estimate tracking, with LTCG out of scope for now.
 - Chart annotations.
 - Advanced expectancy analytics.
 - Position sizing simulator.

@@ -1,12 +1,21 @@
 import { Activity, BarChart3, BookOpen, ClipboardCheck, IndianRupee, Pencil, Plus, Settings as SettingsIcon, Trash2, X } from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
 import { apiDelete, apiGet, apiSend, endpoints, type AppData, type ReferenceData, uploadScreenshot } from "./api";
-import type { Dashboard, Settings, Trade, TradeExit } from "./types";
+import type { Dashboard, DashboardPeriodKey, Settings, Trade, TradeExit } from "./types";
 
 type View = "dashboard" | "new" | "open" | "closed" | "settings";
 
 const today: string = new Date().toISOString().slice(0, 10);
 const successToastDurationMs: number = 3000;
+const defaultDashboardPeriod: DashboardPeriodKey = "this_month";
+const dashboardPeriodOptions: readonly { readonly key: DashboardPeriodKey; readonly label: string }[] = [
+  { key: "this_month", label: "This month" },
+  { key: "this_week", label: "This week" },
+  { key: "last_month", label: "Last month" },
+  { key: "current_fy", label: "Current FY" },
+  { key: "last_fy", label: "Last FY" },
+  { key: "all_time", label: "All time" }
+];
 
 type StopLossEditedField = "percentage" | "price";
 type ToastState = {
@@ -59,12 +68,13 @@ function createEmptyExitForm(): ExitFormState {
 
 export function App(): JSX.Element {
   const [view, setView] = useState<View>("dashboard");
+  const [dashboardPeriod, setDashboardPeriod] = useState<DashboardPeriodKey>(defaultDashboardPeriod);
   const [data, setData] = useState<AppData | null>(null);
   const [selectedTradeId, setSelectedTradeId] = useState<number | null>(null);
   const [toast, setToast] = useState<ToastState | null>(null);
   const reload = async (): Promise<void> => {
     const [dashboard, settings, referenceData, openTrades, closedTrades] = await Promise.all([
-      apiGet<Dashboard>(endpoints.dashboard),
+      apiGet<Dashboard>(endpoints.dashboard(dashboardPeriod)),
       apiGet<Settings>(endpoints.settings),
       apiGet<ReferenceData>(endpoints.referenceData),
       apiGet<readonly Trade[]>(endpoints.openTrades),
@@ -77,6 +87,15 @@ export function App(): JSX.Element {
   const navigate = (nextView: View): void => {
     clearToast();
     setView(nextView);
+  };
+  const changeDashboardPeriod = async (period: DashboardPeriodKey): Promise<void> => {
+    setDashboardPeriod(period);
+    try {
+      const dashboard: Dashboard = await apiGet<Dashboard>(endpoints.dashboard(period));
+      setData((current: AppData | null) => current ? { ...current, dashboard } : current);
+    } catch (error: unknown) {
+      showToast(error instanceof Error ? error.message : "Unable to load dashboard", "error");
+    }
   };
   useEffect(() => {
     reload().catch((error: unknown) => showToast(error instanceof Error ? error.message : "Unable to load journal", "error"));
@@ -108,7 +127,7 @@ export function App(): JSX.Element {
       </aside>
       <section className="workspace">
         {toast ? <Toast message={toast.message} tone={toast.tone} onDismiss={clearToast} /> : null}
-        {view === "dashboard" ? <DashboardView dashboard={data.dashboard} /> : null}
+        {view === "dashboard" ? <DashboardView dashboard={data.dashboard} period={dashboardPeriod} onPeriodChange={changeDashboardPeriod} /> : null}
         {view === "new" ? <NewTradeView data={data} onSaved={async () => { await reload(); setView("open"); showToast("Trade saved"); }} /> : null}
         {view === "open" ? <TradesView mode="open" title="Open Trades" trades={data.openTrades} onSelect={setSelectedTradeId} /> : null}
         {view === "closed" ? <TradesView mode="closed" title="Closed Trades" trades={data.closedTrades} onSelect={setSelectedTradeId} /> : null}
@@ -159,21 +178,60 @@ function NavButton(props: { readonly active: boolean; readonly icon: JSX.Element
   return <button className={props.active ? "nav-button active" : "nav-button"} onClick={props.onClick} type="button">{props.icon}<span>{props.label}</span></button>;
 }
 
-function DashboardView(props: { readonly dashboard: Dashboard }): JSX.Element {
+function DashboardView(props: {
+  readonly dashboard: Dashboard;
+  readonly period: DashboardPeriodKey;
+  readonly onPeriodChange: (period: DashboardPeriodKey) => Promise<void>;
+}): JSX.Element {
   const d = props.dashboard;
   return (
     <>
-      <Header eyebrow="Performance" title="Dashboard" />
-      <div className="metric-grid">
-        <Metric label="Current capital" value={money(d.currentCapital)} icon={<IndianRupee />} />
-        <Metric label="Total realized P&L" value={money(d.totalRealizedPnl)} tone={d.totalRealizedPnl >= 0 ? "good" : "bad"} />
-        <Metric label="Monthly P&L" value={money(d.monthlyPnl)} />
-        <Metric label="Weekly P&L" value={money(d.weeklyPnl)} />
-        <Metric label="Win rate" value={`${d.winRate}%`} />
-        <Metric label="Profit factor" value={String(d.profitFactor)} />
-        <Metric label="Average R" value={String(d.averageR)} />
-        <Metric label="Max drawdown" value={money(d.maxDrawdown)} tone="bad" />
-      </div>
+      <header className="page-header dashboard-header">
+        <div>
+          <p className="eyebrow">Performance</p>
+          <h2>Dashboard</h2>
+          <p className="period-range">{formatPeriodRange(d.period.startDate, d.period.endDate)}</p>
+        </div>
+        <label className="period-selector">
+          <span>Period</span>
+          <select value={props.period} onChange={(event) => props.onPeriodChange(event.target.value as DashboardPeriodKey)}>
+            {dashboardPeriodOptions.map((option) => <option key={option.key} value={option.key}>{option.label}</option>)}
+          </select>
+        </label>
+      </header>
+      <section className="dashboard-section">
+        <h3>Account Snapshot</h3>
+        <div className="metric-grid snapshot-grid">
+          <Metric label="Current capital" value={money(d.currentCapital)} icon={<IndianRupee />} />
+          <Metric label="Open trades" value={String(d.openTrades)} />
+          <Metric label="Open risk" value={money(d.openRiskExposure)} />
+        </div>
+      </section>
+      <section className="dashboard-section">
+        <h3>Period Capital</h3>
+        <div className="metric-grid snapshot-grid">
+          <Metric label="Starting capital" value={money(d.periodStartingCapital)} />
+          <Metric label="Ending capital" value={money(d.periodEndingCapital)} />
+          <Metric
+            label="Capital change"
+            tone={d.periodCapitalChange >= 0 ? "good" : "bad"}
+            value={`${money(d.periodCapitalChange)} · ${formatSignedPercent(d.periodCapitalChangePercentage)}`}
+          />
+        </div>
+      </section>
+      <section className="dashboard-section">
+        <h3>Period Performance</h3>
+        <div className="metric-grid">
+          <Metric label="Period P&L" value={money(d.periodPnl)} tone={d.periodPnl >= 0 ? "good" : "bad"} />
+          <Metric label="Closed trades" value={String(d.periodClosedTrades)} />
+          <Metric label="Win rate" value={`${d.winRate}%`} />
+          <Metric label="Average R" value={String(d.averageR)} />
+          <Metric label="Profit factor" value={String(d.profitFactor)} />
+          <Metric label="Average winner" value={money(d.averageWinner)} tone="good" />
+          <Metric label="Average loser" value={money(d.averageLoser)} tone="bad" />
+          <Metric label="Max drawdown" value={money(d.maxDrawdown)} tone="bad" />
+        </div>
+      </section>
       <div className="split">
         <section className="panel">
           <h2>Execution Quality</h2>
@@ -182,13 +240,11 @@ function DashboardView(props: { readonly dashboard: Dashboard }): JSX.Element {
             <Metric label="Rules broken P&L" value={money(d.ruleBrokenPnl)} />
             <Metric label="Best setup" value={d.bestSetup} />
             <Metric label="Worst setup" value={d.worstSetup} />
-            <Metric label="Open trades" value={String(d.openTrades)} />
-            <Metric label="Open risk" value={money(d.openRiskExposure)} />
           </div>
         </section>
         <section className="panel">
           <h2>Mistakes</h2>
-          {d.mistakeFrequency.length === 0 ? <p className="muted">No reviewed mistakes yet.</p> : d.mistakeFrequency.map((item) => (
+          {d.mistakeFrequency.length === 0 ? <p className="muted">No reviewed mistakes in this period.</p> : d.mistakeFrequency.map((item) => (
             <div className="row" key={item.label}><span>{item.label}</span><strong>{item.count}</strong></div>
           ))}
         </section>
@@ -807,6 +863,17 @@ function formatDuration(durationDays: number): string {
     return "-";
   }
   return `${durationDays}d`;
+}
+
+function formatPeriodRange(startDate: string | null, endDate: string): string {
+  if (!startDate) {
+    return `Through ${formatDisplayDate(endDate)}`;
+  }
+  return `${formatDisplayDate(startDate)} - ${formatDisplayDate(endDate)}`;
+}
+
+function formatDisplayDate(value: string): string {
+  return new Intl.DateTimeFormat("en-IN", { day: "2-digit", month: "short", year: "numeric" }).format(new Date(`${value}T00:00:00`));
 }
 
 function formatTableQuantity(mode: "open" | "closed", trade: Trade): string {

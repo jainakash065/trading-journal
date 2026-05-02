@@ -12,12 +12,26 @@ type ClosedTradeMetric = {
   readonly ruleScore: number | null;
 };
 
+export type DashboardPeriodKey = "all_time" | "current_fy" | "last_fy" | "this_month" | "last_month" | "this_week";
+
+type DashboardPeriod = {
+  readonly key: DashboardPeriodKey;
+  readonly label: string;
+  readonly startDate: string | null;
+  readonly endDate: string;
+};
+
 export type Dashboard = {
+  readonly period: DashboardPeriod;
   readonly startingCapital: number;
   readonly currentCapital: number;
   readonly totalRealizedPnl: number;
-  readonly monthlyPnl: number;
-  readonly weeklyPnl: number;
+  readonly periodStartingCapital: number;
+  readonly periodEndingCapital: number;
+  readonly periodCapitalChange: number;
+  readonly periodCapitalChangePercentage: number;
+  readonly periodPnl: number;
+  readonly periodClosedTrades: number;
   readonly winRate: number;
   readonly averageWinner: number;
   readonly averageLoser: number;
@@ -35,40 +49,60 @@ export type Dashboard = {
   readonly capitalCurve: readonly { readonly date: string; readonly capital: number }[];
 };
 
-export function buildDashboard(db: Database.Database): Dashboard {
+export function buildDashboard(db: Database.Database, periodKey: DashboardPeriodKey = "this_month", today: Date = new Date()): Dashboard {
   const settings: Record<string, string> = getSettings(db);
   const startingCapital: number = Number(settings.startingCapital ?? 0);
+  const todayText: string = formatDate(today);
+  const period: DashboardPeriod = getDashboardPeriod(periodKey, today);
   const closedTrades: readonly ClosedTradeMetric[] = listClosedTradeMetrics(db);
+  const periodTrades: readonly ClosedTradeMetric[] = filterTradesByPeriod(closedTrades, period);
   const totalRealizedPnl: number = round(closedTrades.reduce((total: number, trade: ClosedTradeMetric) => total + trade.realizedPnl, 0));
-  const winners: readonly ClosedTradeMetric[] = closedTrades.filter((trade: ClosedTradeMetric) => trade.realizedPnl > 0);
-  const losers: readonly ClosedTradeMetric[] = closedTrades.filter((trade: ClosedTradeMetric) => trade.realizedPnl < 0);
-  const winRate: number = closedTrades.length > 0 ? round((winners.length / closedTrades.length) * 100) : 0;
+  const winners: readonly ClosedTradeMetric[] = periodTrades.filter((trade: ClosedTradeMetric) => trade.realizedPnl > 0);
+  const losers: readonly ClosedTradeMetric[] = periodTrades.filter((trade: ClosedTradeMetric) => trade.realizedPnl < 0);
+  const winRate: number = periodTrades.length > 0 ? round((winners.length / periodTrades.length) * 100) : 0;
   const averageWinner: number = average(winners.map((trade: ClosedTradeMetric) => trade.realizedPnl));
   const averageLoser: number = average(losers.map((trade: ClosedTradeMetric) => trade.realizedPnl));
   const grossProfit: number = winners.reduce((total: number, trade: ClosedTradeMetric) => total + trade.realizedPnl, 0);
   const grossLoss: number = Math.abs(losers.reduce((total: number, trade: ClosedTradeMetric) => total + trade.realizedPnl, 0));
+  const currentCapital: number = getCurrentCapital(db);
+  const periodStartingCapital: number = getPeriodStartingCapital({ db, period, startingCapital });
+  const periodEndingCapital: number = getPeriodEndingCapital({ db, period, startingCapital, currentCapital, todayText });
+  const periodCapitalChange: number = round(periodEndingCapital - periodStartingCapital);
   return {
+    period,
     startingCapital,
-    currentCapital: getCurrentCapital(db),
+    currentCapital,
     totalRealizedPnl,
-    monthlyPnl: sumSince(closedTrades, startOfMonth()),
-    weeklyPnl: sumSince(closedTrades, startOfWeek()),
+    periodStartingCapital,
+    periodEndingCapital,
+    periodCapitalChange,
+    periodCapitalChangePercentage: periodStartingCapital > 0 ? round((periodCapitalChange / periodStartingCapital) * 100) : 0,
+    periodPnl: round(periodTrades.reduce((total: number, trade: ClosedTradeMetric) => total + trade.realizedPnl, 0)),
+    periodClosedTrades: periodTrades.length,
     winRate,
     averageWinner,
     averageLoser,
     profitFactor: grossLoss > 0 ? round(grossProfit / grossLoss) : round(grossProfit),
-    averageR: average(closedTrades.map((trade: ClosedTradeMetric) => trade.finalR)),
-    expectancy: average(closedTrades.map((trade: ClosedTradeMetric) => trade.realizedPnl)),
-    maxDrawdown: calculateMaxDrawdown({ startingCapital, trades: closedTrades }),
+    averageR: average(periodTrades.map((trade: ClosedTradeMetric) => trade.finalR)),
+    expectancy: average(periodTrades.map((trade: ClosedTradeMetric) => trade.realizedPnl)),
+    maxDrawdown: calculateMaxDrawdown({ startingCapital: periodStartingCapital, trades: periodTrades }),
     openTrades: getCount(db, "SELECT COUNT(*) AS count FROM trades WHERE status != 'closed'"),
     openRiskExposure: getOpenRiskExposure(db),
-    bestSetup: getSetupByPnl(closedTrades, "best"),
-    worstSetup: getSetupByPnl(closedTrades, "worst"),
-    ruleFollowedPnl: round(closedTrades.filter((trade: ClosedTradeMetric) => trade.followedPlan === 1).reduce((total: number, trade: ClosedTradeMetric) => total + trade.realizedPnl, 0)),
-    ruleBrokenPnl: round(closedTrades.filter((trade: ClosedTradeMetric) => trade.followedPlan === 0).reduce((total: number, trade: ClosedTradeMetric) => total + trade.realizedPnl, 0)),
-    mistakeFrequency: getMistakeFrequency(db),
+    bestSetup: getSetupByPnl(periodTrades, "best"),
+    worstSetup: getSetupByPnl(periodTrades, "worst"),
+    ruleFollowedPnl: round(periodTrades.filter((trade: ClosedTradeMetric) => trade.followedPlan === 1).reduce((total: number, trade: ClosedTradeMetric) => total + trade.realizedPnl, 0)),
+    ruleBrokenPnl: round(periodTrades.filter((trade: ClosedTradeMetric) => trade.followedPlan === 0).reduce((total: number, trade: ClosedTradeMetric) => total + trade.realizedPnl, 0)),
+    mistakeFrequency: getMistakeFrequency(db, period),
     capitalCurve: buildCapitalCurve({ db, startingCapital })
   };
+}
+
+export function parseDashboardPeriodKey(value: unknown): DashboardPeriodKey {
+  const key: string = typeof value === "string" ? value : "this_month";
+  if (key === "all_time" || key === "current_fy" || key === "last_fy" || key === "this_month" || key === "last_month" || key === "this_week") {
+    return key;
+  }
+  return "this_month";
 }
 
 function listClosedTradeMetrics(db: Database.Database): readonly ClosedTradeMetric[] {
@@ -102,21 +136,71 @@ function round(value: number): number {
   return Number(value.toFixed(2));
 }
 
-function startOfMonth(): string {
-  const date = new Date();
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-01`;
+function getDashboardPeriod(periodKey: DashboardPeriodKey, today: Date): DashboardPeriod {
+  const year: number = today.getUTCFullYear();
+  const month: number = today.getUTCMonth();
+  if (periodKey === "all_time") {
+    return { key: periodKey, label: "All time", startDate: null, endDate: formatDate(today) };
+  }
+  if (periodKey === "current_fy") {
+    const fyStartYear: number = month >= 3 ? year : year - 1;
+    return createPeriod(periodKey, "Current FY", fyStartYear, 3, 1, fyStartYear + 1, 2, 31);
+  }
+  if (periodKey === "last_fy") {
+    const currentFyStartYear: number = month >= 3 ? year : year - 1;
+    return createPeriod(periodKey, "Last FY", currentFyStartYear - 1, 3, 1, currentFyStartYear, 2, 31);
+  }
+  if (periodKey === "last_month") {
+    const start: Date = new Date(Date.UTC(year, month - 1, 1));
+    const end: Date = new Date(Date.UTC(year, month, 0));
+    return { key: periodKey, label: "Last month", startDate: formatDate(start), endDate: formatDate(end) };
+  }
+  if (periodKey === "this_week") {
+    return getThisWeekPeriod(today);
+  }
+  const start: Date = new Date(Date.UTC(year, month, 1));
+  const end: Date = new Date(Date.UTC(year, month + 1, 0));
+  return { key: periodKey, label: "This month", startDate: formatDate(start), endDate: formatDate(end) };
 }
 
-function startOfWeek(): string {
-  const date = new Date();
-  const day = date.getDay();
-  const diff = date.getDate() - day + (day === 0 ? -6 : 1);
-  date.setDate(diff);
+function createPeriod(
+  key: DashboardPeriodKey,
+  label: string,
+  startYear: number,
+  startMonth: number,
+  startDay: number,
+  endYear: number,
+  endMonth: number,
+  endDay: number
+): DashboardPeriod {
+  return {
+    key,
+    label,
+    startDate: formatDate(new Date(Date.UTC(startYear, startMonth, startDay))),
+    endDate: formatDate(new Date(Date.UTC(endYear, endMonth, endDay)))
+  };
+}
+
+function getThisWeekPeriod(today: Date): DashboardPeriod {
+  const date: Date = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
+  const day: number = date.getUTCDay();
+  const startOffset: number = day === 0 ? -6 : 1 - day;
+  const start: Date = new Date(date);
+  start.setUTCDate(date.getUTCDate() + startOffset);
+  const end: Date = new Date(start);
+  end.setUTCDate(start.getUTCDate() + 6);
+  return { key: "this_week", label: "This week", startDate: formatDate(start), endDate: formatDate(end) };
+}
+
+function formatDate(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
 
-function sumSince(trades: readonly ClosedTradeMetric[], date: string): number {
-  return round(trades.filter((trade: ClosedTradeMetric) => trade.closedDate >= date).reduce((total: number, trade: ClosedTradeMetric) => total + trade.realizedPnl, 0));
+function filterTradesByPeriod(trades: readonly ClosedTradeMetric[], period: DashboardPeriod): readonly ClosedTradeMetric[] {
+  return trades.filter((trade: ClosedTradeMetric) => {
+    const afterStart: boolean = period.startDate === null || trade.closedDate >= period.startDate;
+    return afterStart && trade.closedDate <= period.endDate;
+  });
 }
 
 function getCount(db: Database.Database, query: string): number {
@@ -151,14 +235,51 @@ function calculateMaxDrawdown(params: { readonly startingCapital: number; readon
   return round(maxDrawdown);
 }
 
-function getMistakeFrequency(db: Database.Database): readonly { readonly label: string; readonly count: number }[] {
+function getMistakeFrequency(db: Database.Database, period: DashboardPeriod): readonly { readonly label: string; readonly count: number }[] {
+  const periodFilter: string = period.startDate === null ? "x.closed_date <= ?" : "x.closed_date >= ? AND x.closed_date <= ?";
+  const values: readonly string[] = period.startDate === null ? [period.endDate] : [period.startDate, period.endDate];
   return db.prepare(`
     SELECT m.label, COUNT(*) AS count
     FROM trade_mistakes tm
     JOIN mistake_tags m ON m.id = tm.mistake_id
+    JOIN trades t ON t.id = tm.trade_id
+    JOIN (
+      SELECT trade_id, MAX(exit_date) AS closed_date
+      FROM trade_exits
+      GROUP BY trade_id
+    ) x ON x.trade_id = t.id
+    WHERE t.status = 'closed' AND ${periodFilter}
     GROUP BY m.id
     ORDER BY count DESC, m.label ASC
-  `).all() as { readonly label: string; readonly count: number }[];
+  `).all(...values) as { readonly label: string; readonly count: number }[];
+}
+
+function getPeriodStartingCapital(params: {
+  readonly db: Database.Database;
+  readonly period: DashboardPeriod;
+  readonly startingCapital: number;
+}): number {
+  if (params.period.startDate === null) {
+    return params.startingCapital;
+  }
+  const row = params.db.prepare("SELECT COALESCE(SUM(amount), 0) AS total FROM capital_ledger WHERE entry_date < ?")
+    .get(params.period.startDate) as { readonly total: number };
+  return round(params.startingCapital + row.total);
+}
+
+function getPeriodEndingCapital(params: {
+  readonly db: Database.Database;
+  readonly period: DashboardPeriod;
+  readonly startingCapital: number;
+  readonly currentCapital: number;
+  readonly todayText: string;
+}): number {
+  if (params.period.endDate >= params.todayText) {
+    return params.currentCapital;
+  }
+  const row = params.db.prepare("SELECT COALESCE(SUM(amount), 0) AS total FROM capital_ledger WHERE entry_date <= ?")
+    .get(params.period.endDate) as { readonly total: number };
+  return round(params.startingCapital + row.total);
 }
 
 function buildCapitalCurve(params: { readonly db: Database.Database; readonly startingCapital: number }): readonly { readonly date: string; readonly capital: number }[] {

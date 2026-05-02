@@ -1,4 +1,4 @@
-import type { Dashboard, ReferenceItem, Settings, Trade } from "./types";
+import type { Dashboard, DashboardPeriodKey, ReferenceItem, Settings, Trade } from "./types";
 
 export type ReferenceData = {
   readonly setups: readonly ReferenceItem[];
@@ -33,7 +33,7 @@ export async function uploadScreenshot(path: string, file: File): Promise<void> 
 }
 
 export const endpoints = {
-  dashboard: "/api/dashboard",
+  dashboard: (period: DashboardPeriodKey) => `/api/dashboard?period=${period}`,
   settings: "/api/settings",
   referenceData: "/api/reference-data",
   openTrades: "/api/trades?status=open",

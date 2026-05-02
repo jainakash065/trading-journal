@@ -1,0 +1,104 @@
+import Database from "better-sqlite3";
+import { describe, expect, it } from "vitest";
+import { buildDashboard, type Dashboard, type DashboardPeriodKey } from "../server/src/dashboard";
+import { initializeDatabase } from "../server/src/db";
+import { addExit, createTrade } from "../server/src/repository";
+
+const dashboardToday: Date = new Date("2026-05-02T00:00:00Z");
+
+describe("dashboard period metrics", () => {
+  it("defaults current month to zero when no trades closed in the current month", () => {
+    const db: Database.Database = createDashboardDatabase();
+    createMtarTechTrade(db);
+    const dashboard: Dashboard = buildDashboard(db, "this_month", dashboardToday);
+    expect(dashboard.period).toMatchObject({
+      key: "this_month",
+      startDate: "2026-05-01",
+      endDate: "2026-05-31"
+    });
+    expect(dashboard.periodPnl).toBe(0);
+    expect(dashboard.periodClosedTrades).toBe(0);
+    expect(dashboard.periodStartingCapital).toBe(566556.4);
+    expect(dashboard.periodEndingCapital).toBe(566556.4);
+  });
+
+  it("includes April closed trades in last month and current FY", () => {
+    const db: Database.Database = createDashboardDatabase();
+    createMtarTechTrade(db);
+    const lastMonth: Dashboard = buildDashboard(db, "last_month", dashboardToday);
+    const currentFy: Dashboard = buildDashboard(db, "current_fy", dashboardToday);
+    expectPeriodPnl(lastMonth, "last_month", 16556.4);
+    expect(lastMonth.periodStartingCapital).toBe(550000);
+    expect(lastMonth.periodEndingCapital).toBe(566556.4);
+    expect(lastMonth.periodCapitalChange).toBe(16556.4);
+    expect(lastMonth.periodCapitalChangePercentage).toBe(3.01);
+    expectPeriodPnl(currentFy, "current_fy", 16556.4);
+    expect(currentFy.period.startDate).toBe("2026-04-01");
+    expect(currentFy.period.endDate).toBe("2027-03-31");
+  });
+
+  it("starts all time from configured capital and ends at current capital", () => {
+    const db: Database.Database = createDashboardDatabase();
+    createMtarTechTrade(db);
+    const dashboard: Dashboard = buildDashboard(db, "all_time", dashboardToday);
+    expect(dashboard.period.startDate).toBeNull();
+    expect(dashboard.periodStartingCapital).toBe(550000);
+    expect(dashboard.periodEndingCapital).toBe(566556.4);
+    expect(dashboard.periodPnl).toBe(16556.4);
+  });
+});
+
+function createDashboardDatabase(): Database.Database {
+  const db: Database.Database = new Database(":memory:");
+  initializeDatabase(db);
+  return db;
+}
+
+function createMtarTechTrade(db: Database.Database): number {
+  const tradeId: number = createTrade(db, {
+    symbol: "MTARTECH",
+    market: "India",
+    direction: "Buy",
+    entryDate: "2026-04-07",
+    entryPrice: 3685,
+    quantity: 16,
+    stopLoss: 3592.875,
+    riskPercentage: 0.5,
+    riskCapitalBase: 550000,
+    setupId: 1,
+    entryReason: "Breakout",
+    emotionalState: "",
+    confidence: 4,
+    notes: "",
+    checklistResponses: []
+  });
+  addExit(db, createExitInput({ tradeId, exitDate: "2026-04-09", exitPrice: 4212.9, quantity: 6 }));
+  addExit(db, createExitInput({ tradeId, exitDate: "2026-04-15", exitPrice: 4688.9, quantity: 5 }));
+  addExit(db, createExitInput({ tradeId, exitDate: "2026-04-23", exitPrice: 5358.9, quantity: 5 }));
+  return tradeId;
+}
+
+function createExitInput(params: {
+  readonly tradeId: number;
+  readonly exitDate: string;
+  readonly exitPrice: number;
+  readonly quantity: number;
+}) {
+  return {
+    tradeId: params.tradeId,
+    exitDate: params.exitDate,
+    exitPrice: params.exitPrice,
+    quantity: params.quantity,
+    reason: "",
+    emotionalState: "",
+    notes: ""
+  };
+}
+
+function expectPeriodPnl(dashboard: Dashboard, period: DashboardPeriodKey, pnl: number): void {
+  expect(dashboard.period.key).toBe(period);
+  expect(dashboard.periodPnl).toBe(pnl);
+  expect(dashboard.periodClosedTrades).toBe(1);
+  expect(dashboard.winRate).toBe(100);
+  expect(dashboard.averageR).toBe(11.23);
+}

@@ -62,12 +62,26 @@ export type TradeExit = {
   readonly rMultiple: number;
 };
 
+export type DashboardPeriodKey = "all_time" | "current_fy" | "last_fy" | "this_month" | "last_month" | "this_week";
+
+export type DashboardPeriod = {
+  readonly key: DashboardPeriodKey;
+  readonly label: string;
+  readonly startDate: string | null;
+  readonly endDate: string;
+};
+
 export type Dashboard = {
+  readonly period: DashboardPeriod;
   readonly startingCapital: number;
   readonly currentCapital: number;
   readonly totalRealizedPnl: number;
-  readonly monthlyPnl: number;
-  readonly weeklyPnl: number;
+  readonly periodStartingCapital: number;
+  readonly periodEndingCapital: number;
+  readonly periodCapitalChange: number;
+  readonly periodCapitalChangePercentage: number;
+  readonly periodPnl: number;
+  readonly periodClosedTrades: number;
   readonly winRate: number;
   readonly averageWinner: number;
   readonly averageLoser: number;

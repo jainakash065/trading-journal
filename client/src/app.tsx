@@ -254,8 +254,6 @@ function DashboardView(props: {
           <Metric label="Open Realized P&L" value={money(d.periodOpenRealizedPnl)} tone={getNumberTone(d.periodOpenRealizedPnl)} />
           <Metric label="Closed trades" value={String(d.periodClosedTrades)} />
           <Metric label="Win rate" value={`${d.winRate}%`} />
-          <Metric label="Average R" value={String(d.averageR)} />
-          <Metric label="Profit factor" value={String(d.profitFactor)} />
           <Metric label="Max drawdown" value={money(d.maxDrawdown)} tone="bad" />
         </div>
       </section>
@@ -294,9 +292,7 @@ function DashboardView(props: {
           <div className="analytics-main metric-grid">
             <Metric label="P&L" value={money(d.lastNTrades.pnl)} tone={getNumberTone(d.lastNTrades.pnl)} />
             <Metric label="Win rate" value={`${d.lastNTrades.winRate}%`} />
-            <Metric label="Average R" value={formatR(d.lastNTrades.averageR)} tone={getNumberTone(d.lastNTrades.averageR)} />
             <Metric label="R Expectancy" value={formatR(d.lastNTrades.rExpectancy)} tone={getNumberTone(d.lastNTrades.rExpectancy)} />
-            <Metric label="Profit factor" value={String(d.lastNTrades.profitFactor)} />
             <Metric label="Avg Winning R" value={formatR(d.lastNTrades.averageWinningR)} tone="good" />
             <Metric label="Avg Losing R" value={formatR(d.lastNTrades.averageLosingR)} tone="bad" />
             <Metric label="Expectancy Ex-Largest" value={formatR(d.lastNTrades.expectancyWithoutLargestWinner)} tone={getNumberTone(d.lastNTrades.expectancyWithoutLargestWinner)} />

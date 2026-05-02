@@ -402,8 +402,6 @@ Implemented:
   - Open Realized P&L from exits booked on open or partially exited trades.
   - Closed trades count.
   - Win rate.
-  - Average R.
-  - Profit factor.
   - Max drawdown based on booked realized exits in exit-date order.
 - Asymmetric Edge:
   - R Expectancy.
@@ -433,7 +431,7 @@ Implemented:
   - Open and partially exited trades are excluded.
   - Multiple exits still count as one entry trade.
   - Ordered by final exit date descending, then trade ID descending for ties.
-  - Shows P&L, win rate, average R, R expectancy, profit factor, average winning R, average losing R, expectancy excluding largest winner, average winner hold days, and average loser hold days.
+  - Shows P&L, win rate, R expectancy, average winning R, average losing R, expectancy excluding largest winner, average winner hold days, and average loser hold days.
   - Includes a separate Last N R Distribution panel.
   - Last N analytics are independent of the selected dashboard period.
 - Execution Quality:
@@ -447,6 +445,7 @@ Implemented:
 Current dashboard rules:
 
 - Closed-trade quality metrics are filtered by final exit date.
+- R Expectancy is the primary risk-normalized strategy-quality metric.
 - R expectancy, R distribution, and winner/loser holding-day averages are based only on fully closed trades.
 - Period R Distribution belongs to the selected dashboard period.
 - Last N R Distribution belongs only to the selected last-N closed trade sample.
@@ -470,6 +469,7 @@ Future scope:
   - Unrealized/mark-to-market equity curve.
 - Drill-down from dashboard cards to filtered trades.
 - Expectancy trend by month, setup, and financial year.
+- Average R and Profit Factor in deeper analytics or money-focused reports.
 - Outlier sensitivity analysis beyond excluding the single largest winner.
 - Expectancy including only reviewed trades or only rule-following trades.
 - Revisit drawdown variants later if needed:

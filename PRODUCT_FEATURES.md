@@ -403,6 +403,9 @@ Implemented:
   - Largest Winner R.
   - Expectancy excluding largest winner.
 - R Distribution:
+  - Visual horizontal bar panel with count and percentage per bucket.
+  - Bars scale relative to the largest bucket in the selected period.
+  - Loss, neutral/small-win, and winner buckets use distinct tones.
   - `<= -1R`
   - `-1R to 0R`
   - `0R to 1R`

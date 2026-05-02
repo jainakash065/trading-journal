@@ -309,6 +309,59 @@ describe("dashboard period metrics", () => {
     expect(dashboard.lastNTrades.averageR).toBe(11.23);
   });
 
+  it("calculates setup analytics from period closed trades", () => {
+    const db: Database.Database = createDashboardDatabase();
+    createClosedTradeWithFinalR(db, { symbol: "PULLBACKWIN", finalR: 2, entryDate: "2026-04-01", exitDate: "2026-04-05", setupId: 2 });
+    createClosedTradeWithFinalR(db, { symbol: "BREAKOUTWIN", finalR: 1, entryDate: "2026-04-02", exitDate: "2026-04-06", setupId: 1 });
+    createClosedTradeWithFinalR(db, { symbol: "BREAKOUTLOSS", finalR: -1, entryDate: "2026-04-03", exitDate: "2026-04-07", setupId: 1 });
+    createClosedTradeWithFinalR(db, { symbol: "NOSETUP", finalR: -0.5, entryDate: "2026-04-04", exitDate: "2026-04-08", setupId: null });
+    createPartiallyExitedTrade(db);
+
+    const dashboard: Dashboard = buildDashboard(db, "last_month", dashboardToday);
+
+    expect(dashboard.setupAnalytics).toEqual([
+      {
+        setupName: "Pullback",
+        closedTrades: 1,
+        winRate: 100,
+        rExpectancy: 2,
+        averageWinningR: 2,
+        averageLosingR: 0,
+        medianR: 2,
+        pnl: 200
+      },
+      {
+        setupName: "Breakout",
+        closedTrades: 2,
+        winRate: 50,
+        rExpectancy: 0,
+        averageWinningR: 1,
+        averageLosingR: 1,
+        medianR: 0,
+        pnl: 0
+      },
+      {
+        setupName: "Unassigned",
+        closedTrades: 1,
+        winRate: 0,
+        rExpectancy: -0.5,
+        averageWinningR: 0,
+        averageLosingR: 0.5,
+        medianR: -0.5,
+        pnl: -50
+      }
+    ]);
+  });
+
+  it("keeps setup analytics period-aware", () => {
+    const db: Database.Database = createDashboardDatabase();
+    createClosedTradeWithFinalR(db, { symbol: "APRILSETUP", finalR: 1, entryDate: "2026-04-01", exitDate: "2026-04-05", setupId: 1 });
+
+    const dashboard: Dashboard = buildDashboard(db, "this_month", dashboardToday);
+
+    expect(dashboard.setupAnalytics).toEqual([]);
+  });
+
   it("infers capital history start date for existing journal data", () => {
     const db: Database.Database = createDashboardDatabase();
     createMtarTechTrade(db);
@@ -405,6 +458,7 @@ function createClosedTradeWithFinalR(
     readonly finalR: number;
     readonly entryDate: string;
     readonly exitDate: string;
+    readonly setupId?: number | null;
   }
 ): number {
   const entryPrice = 100;
@@ -421,7 +475,7 @@ function createClosedTradeWithFinalR(
     stopLoss,
     riskPercentage: 0.5,
     riskCapitalBase: 550000,
-    setupId: 1,
+    setupId: params.setupId === undefined ? 1 : params.setupId,
     entryReason: "R analytics test",
     emotionalState: "",
     confidence: 3,

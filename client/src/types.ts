@@ -109,6 +109,17 @@ export type LastNTradesAnalytics = {
   readonly rDistribution: readonly RDistributionBucket[];
 };
 
+export type SetupAnalyticsRow = {
+  readonly setupName: string;
+  readonly closedTrades: number;
+  readonly winRate: number;
+  readonly rExpectancy: number;
+  readonly averageWinningR: number;
+  readonly averageLosingR: number;
+  readonly medianR: number;
+  readonly pnl: number;
+};
+
 export type Dashboard = {
   readonly period: DashboardPeriod;
   readonly capitalHistoryStartDate: string;
@@ -152,4 +163,5 @@ export type Dashboard = {
   readonly mistakeFrequency: readonly { readonly label: string; readonly count: number }[];
   readonly capitalCurve: readonly CapitalCurvePoint[];
   readonly lastNTrades: LastNTradesAnalytics;
+  readonly setupAnalytics: readonly SetupAnalyticsRow[];
 };

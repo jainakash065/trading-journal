@@ -308,11 +308,18 @@ Implemented:
 - Setup selection on trades.
 - Best setup and worst setup on dashboard for the selected period.
 - Setup shown in open/closed trade tables and trade detail.
+- Period-aware setup analytics on Dashboard:
+  - Closed trade count.
+  - Win rate.
+  - R expectancy.
+  - Average winning R.
+  - Average losing R.
+  - Median R.
+  - Total closed-trade P&L.
+  - Unassigned trade grouping.
 
 Future scope:
 
-- Setup-wise win rate.
-- Setup-wise average R.
 - Setup frequency.
 - Setup quality scoring.
 - Setup-specific review page.
@@ -434,6 +441,10 @@ Implemented:
   - Shows P&L, win rate, R expectancy, average winning R, average losing R, expectancy excluding largest winner, average winner hold days, and average loser hold days.
   - Includes a separate Last N R Distribution panel.
   - Last N analytics are independent of the selected dashboard period.
+- Setup Analytics:
+  - Period-aware table showing setup quality from fully closed trades.
+  - Sorts setups by R expectancy, then trade count, then setup name.
+  - Groups trades without a setup as Unassigned.
 - Execution Quality:
   - Rules followed P&L.
   - Rules broken P&L.

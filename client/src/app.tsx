@@ -1,7 +1,7 @@
 import { Activity, BarChart3, BookOpen, ClipboardCheck, IndianRupee, Pencil, Plus, Settings as SettingsIcon, Trash2, X } from "lucide-react";
 import { FormEvent, type PointerEvent, useEffect, useState } from "react";
 import { apiDelete, apiGet, apiSend, endpoints, type AppData, type ReferenceData, uploadScreenshot } from "./api";
-import type { CapitalCurvePoint, Dashboard, DashboardPeriodKey, LastNTradeCount, RDistributionBucket, Settings, Trade, TradeExit } from "./types";
+import type { CapitalCurvePoint, Dashboard, DashboardPeriodKey, LastNTradeCount, RDistributionBucket, Settings, SetupAnalyticsRow, Trade, TradeExit } from "./types";
 
 type View = "dashboard" | "new" | "open" | "closed" | "settings";
 
@@ -276,6 +276,10 @@ function DashboardView(props: {
         </div>
       </section>
       <section className="dashboard-section">
+        <h3>Setup Analytics</h3>
+        <SetupAnalyticsPanel rows={d.setupAnalytics} />
+      </section>
+      <section className="dashboard-section">
         <div className="dashboard-section-header">
           <div>
             <h3>Last N Closed Trades</h3>
@@ -340,6 +344,33 @@ function RDistributionPanel(props: { readonly buckets: readonly RDistributionBuc
               <span className={`distribution-bar ${getDistributionToneClass(bucket.label)}`} style={{ width: `${getDistributionWidth(bucket.count, maxCount)}%` }} />
             </span>
             <strong>{bucket.count} · {formatDistributionPercentage(bucket.count, totalCount)}</strong>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function SetupAnalyticsPanel(props: { readonly rows: readonly SetupAnalyticsRow[] }): JSX.Element {
+  if (props.rows.length === 0) {
+    return <section className="panel"><p className="muted">No closed trades with setups in this period.</p></section>;
+  }
+  return (
+    <section className="panel setup-analytics-panel">
+      <div className="setup-analytics-table">
+        <div className="setup-analytics-head">
+          <span>Setup</span><span>Trades</span><span>Win %</span><span>R Expectancy</span><span>Avg Win R</span><span>Avg Loss R</span><span>Median R</span><span>P&L</span>
+        </div>
+        {props.rows.map((row: SetupAnalyticsRow) => (
+          <div className="setup-analytics-row" key={row.setupName}>
+            <span><strong>{row.setupName}</strong></span>
+            <span>{row.closedTrades}</span>
+            <span>{row.winRate}%</span>
+            <span className={getToneClass(row.rExpectancy)}>{formatR(row.rExpectancy)}</span>
+            <span className="good-text">{formatR(row.averageWinningR)}</span>
+            <span className="bad-text">{formatR(row.averageLosingR)}</span>
+            <span className={getToneClass(row.medianR)}>{formatR(row.medianR)}</span>
+            <span className={getToneClass(row.pnl)}>{money(row.pnl)}</span>
           </div>
         ))}
       </div>
@@ -1154,6 +1185,10 @@ function getNullableTone(value: number | null): "good" | "bad" | undefined {
 
 function getNumberTone(value: number): "good" | "bad" {
   return value >= 0 ? "good" : "bad";
+}
+
+function getToneClass(value: number): string {
+  return value >= 0 ? "good-text" : "bad-text";
 }
 
 function formatPercent(value: number): string {

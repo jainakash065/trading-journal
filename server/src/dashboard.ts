@@ -80,6 +80,17 @@ type LastNTradesAnalytics = {
   readonly rDistribution: readonly RDistributionBucket[];
 };
 
+type SetupAnalyticsRow = {
+  readonly setupName: string;
+  readonly closedTrades: number;
+  readonly winRate: number;
+  readonly rExpectancy: number;
+  readonly averageWinningR: number;
+  readonly averageLosingR: number;
+  readonly medianR: number;
+  readonly pnl: number;
+};
+
 export type Dashboard = {
   readonly period: DashboardPeriod;
   readonly capitalHistoryStartDate: string;
@@ -123,6 +134,7 @@ export type Dashboard = {
   readonly mistakeFrequency: readonly { readonly label: string; readonly count: number }[];
   readonly capitalCurve: readonly CapitalCurvePoint[];
   readonly lastNTrades: LastNTradesAnalytics;
+  readonly setupAnalytics: readonly SetupAnalyticsRow[];
 };
 
 export function buildDashboard(db: Database.Database, periodKey: DashboardPeriodKey = "this_month", today: Date = new Date(), lastN: LastNTradeCount = 20): Dashboard {
@@ -196,7 +208,8 @@ export function buildDashboard(db: Database.Database, periodKey: DashboardPeriod
       capitalHistoryStartDate,
       todayText
     }),
-    lastNTrades
+    lastNTrades,
+    setupAnalytics: calculateSetupAnalytics(periodTrades)
   };
 }
 
@@ -312,6 +325,31 @@ function calculateLastNTradesAnalytics(trades: readonly ClosedTradeMetric[], sel
     averageWinningHoldDays: rAnalytics.averageWinningHoldDays,
     averageLosingHoldDays: rAnalytics.averageLosingHoldDays,
     rDistribution: rAnalytics.rDistribution
+  };
+}
+
+function calculateSetupAnalytics(trades: readonly ClosedTradeMetric[]): readonly SetupAnalyticsRow[] {
+  const grouped: Map<string, ClosedTradeMetric[]> = new Map();
+  trades.forEach((trade: ClosedTradeMetric) => {
+    const setupName: string = trade.setupName ?? "Unassigned";
+    grouped.set(setupName, [...(grouped.get(setupName) ?? []), trade]);
+  });
+  return [...grouped.entries()]
+    .map(([setupName, setupTrades]: [string, ClosedTradeMetric[]]) => createSetupAnalyticsRow(setupName, setupTrades))
+    .sort((first: SetupAnalyticsRow, second: SetupAnalyticsRow) => second.rExpectancy - first.rExpectancy || second.closedTrades - first.closedTrades || first.setupName.localeCompare(second.setupName));
+}
+
+function createSetupAnalyticsRow(setupName: string, trades: readonly ClosedTradeMetric[]): SetupAnalyticsRow {
+  const analytics: RAnalytics = calculateRAnalytics(trades);
+  return {
+    setupName,
+    closedTrades: trades.length,
+    winRate: analytics.winPercentage,
+    rExpectancy: analytics.rExpectancy,
+    averageWinningR: analytics.averageWinningR,
+    averageLosingR: analytics.averageLosingR,
+    medianR: analytics.medianR,
+    pnl: round(trades.reduce((total: number, trade: ClosedTradeMetric) => total + trade.realizedPnl, 0))
   };
 }
 

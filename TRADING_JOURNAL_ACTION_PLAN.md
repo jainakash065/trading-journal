@@ -163,7 +163,7 @@ Goal: learn when the system works and when it should be traded less.
 
 ## Recommended Build Order
 
-1. Setup-wise expectancy.
+1. Setup-wise expectancy. Dashboard-level setup analytics implemented; dedicated setup page remains future scope.
 2. Rule adherence analytics.
 3. Mistake impact analytics.
 4. MFE / MAE tracking.

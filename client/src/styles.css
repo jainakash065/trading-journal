@@ -376,6 +376,51 @@ nav {
   white-space: nowrap;
 }
 
+.setup-analytics-panel {
+  overflow-x: auto;
+}
+
+.setup-analytics-table {
+  min-width: 880px;
+}
+
+.setup-analytics-head,
+.setup-analytics-row {
+  align-items: center;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 1.4fr .55fr .55fr .85fr .8fr .8fr .75fr .85fr;
+  padding: 12px 0;
+}
+
+.setup-analytics-head {
+  border-bottom: 1px solid #e2ddd2;
+  color: #56616a;
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.setup-analytics-row {
+  border-bottom: 1px solid #ece7dd;
+  color: #1f2933;
+  font-size: 14px;
+}
+
+.setup-analytics-row:last-child {
+  border-bottom: 0;
+}
+
+.good-text {
+  color: #16803c;
+  font-weight: 800;
+}
+
+.bad-text {
+  color: #bb3e2d;
+  font-weight: 800;
+}
+
 .exit-row {
   gap: 10px;
 }

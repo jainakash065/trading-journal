@@ -82,6 +82,7 @@ describe("dashboard period metrics", () => {
     expect(dashboard.periodCapitalChange).toBe(dashboard.periodBookedPnl);
     expect(dashboard.periodPnl).toBe(dashboard.periodClosedTradePnl);
     expect(dashboard.periodClosedTrades).toBe(1);
+    expect(dashboard.openRiskExposure).toBe(825.3);
   });
 
   it("uses booked exits for drawdown inside a winning trade with an early partial loss", () => {

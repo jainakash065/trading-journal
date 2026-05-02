@@ -392,7 +392,22 @@ function getCount(db: Database.Database, query: string): number {
 }
 
 function getOpenRiskExposure(db: Database.Database): number {
-  const row = db.prepare("SELECT COALESCE(SUM(planned_risk_amount), 0) AS total FROM trades WHERE status != 'closed'").get() as { total: number };
+  const row = db.prepare(`
+    SELECT COALESCE(SUM(
+      CASE
+        WHEN (t.entry_price - t.stop_loss) > 0
+        THEN (t.entry_price - t.stop_loss) * (t.quantity - COALESCE(x.exited_quantity, 0))
+        ELSE 0
+      END
+    ), 0) AS total
+    FROM trades t
+    LEFT JOIN (
+      SELECT trade_id, SUM(quantity) AS exited_quantity
+      FROM trade_exits
+      GROUP BY trade_id
+    ) x ON x.trade_id = t.id
+    WHERE t.status != 'closed'
+  `).get() as { total: number };
   return round(row.total);
 }
 

@@ -357,14 +357,14 @@ Implemented:
   - Capital change percentage.
   - Capital unavailable state for periods before capital history start.
 - Period Performance:
-  - Period P&L.
+  - Booked P&L from all realized exits in the selected period.
+  - Closed Trade P&L from fully closed trades only.
+  - Open Realized P&L from exits booked on open or partially exited trades.
   - Closed trades count.
   - Win rate.
   - Average R.
   - Profit factor.
-  - Average winner.
-  - Average loser.
-  - Max drawdown.
+  - Max drawdown based on booked realized exits in exit-date order.
 - Execution Quality:
   - Rules followed P&L.
   - Rules broken P&L.
@@ -375,7 +375,8 @@ Implemented:
 
 Current dashboard rules:
 
-- Performance metrics are filtered by final exit date.
+- Closed-trade quality metrics are filtered by final exit date.
+- Booked P&L and max drawdown use realized exit booking dates, including partial exits.
 - Capital is realized-only.
 - Open trade counts and open risk are current account snapshot values, not period-filtered values.
 
@@ -390,6 +391,10 @@ Future scope:
   - Setup distribution.
   - Mistake trend.
 - Drill-down from dashboard cards to filtered trades.
+- Revisit drawdown variants later if needed:
+  - Booked realized drawdown.
+  - Closed-trade drawdown.
+  - Unrealized/mark-to-market drawdown.
 
 ## Journal Views
 
@@ -541,5 +546,6 @@ trading-journal-backup-2026-05-01.zip
 - Advanced expectancy analytics.
 - Position sizing simulator.
 - Streak analysis.
+- Drawdown analysis variants.
 - Setup quality scoring.
 - Mobile-friendly quick entry.

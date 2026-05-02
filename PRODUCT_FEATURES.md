@@ -402,8 +402,10 @@ Implemented:
   - Median R.
   - Largest Winner R.
   - Expectancy excluding largest winner.
-- R Distribution:
-  - Visual horizontal bar panel with count and percentage per bucket.
+- Period R Distribution:
+  - Visual horizontal bar panel grouped with Asymmetric Edge.
+  - Shows R distribution for fully closed trades in the selected dashboard period.
+  - Bars show count and percentage per bucket.
   - Bars scale relative to the largest bucket in the selected period.
   - Loss, neutral/small-win, and winner buckets use distinct tones.
   - `<= -1R`
@@ -412,6 +414,16 @@ Implemented:
   - `1R to 3R`
   - `3R to 5R`
   - `> 5R`
+- Last N Closed Trades:
+  - Sample-based view of the most recent fully closed entry trades.
+  - Supports Last 10, Last 20, and Last 50.
+  - Defaults to Last 20.
+  - Open and partially exited trades are excluded.
+  - Multiple exits still count as one entry trade.
+  - Ordered by final exit date descending, then trade ID descending for ties.
+  - Shows P&L, win rate, average R, R expectancy, profit factor, average winning R, average losing R, expectancy excluding largest winner, average winner hold days, and average loser hold days.
+  - Includes a separate Last N R Distribution panel.
+  - Last N analytics are independent of the selected dashboard period.
 - Execution Quality:
   - Rules followed P&L.
   - Rules broken P&L.
@@ -424,6 +436,8 @@ Current dashboard rules:
 
 - Closed-trade quality metrics are filtered by final exit date.
 - R expectancy, R distribution, and winner/loser holding-day averages are based only on fully closed trades.
+- Period R Distribution belongs to the selected dashboard period.
+- Last N R Distribution belongs only to the selected last-N closed trade sample.
 - Winner/loser holding-day averages use inclusive calendar days from entry date to final exit date.
 - Partial exits from still-open trades affect Booked P&L and Open Realized P&L, but not win rate, average R, expectancy, R distribution, or holding-day averages.
 - Booked P&L and max drawdown use realized exit booking dates, including partial exits.
@@ -597,6 +611,9 @@ Recently left out of current scope:
 
 - Custom dashboard date range picker.
 - Any FY selector beyond Current FY and Last FY.
+- Save preferred Last N sample size.
+- Last N trade drill-down list from the dashboard section.
+- Compare selected period vs Last N sample side by side.
 - Stop movement history and stop movement notes.
 - Locked-profit display when active stop is above entry.
 - Including partial/open trades in expectancy analytics.
@@ -604,11 +621,6 @@ Recently left out of current scope:
 - Live market price integration.
 - Brokerage, charges, and tax-adjusted net P&L calculations.
 - Full backup/export/import workflow.
-
-- Any FY selector.
-- Custom date range picker.
-- Manual deposits and withdrawals.
-- Full zip export/import.
 - CSV export.
 - Advanced filters for trade tables.
 - Monthly review page.

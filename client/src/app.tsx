@@ -282,12 +282,26 @@ function AnalyticsView(props: {
         <h3>R Distribution</h3>
         <RDistributionPanel buckets={d.rDistribution} subtitle={`${getDistributionTotal(d.rDistribution)} closed trades in this period`} title="Period R Distribution" />
       </section>
+      <HoldingTimePanel dashboard={d} />
       <LastNClosedTradesSection dashboard={d} lastNTradeCount={props.lastNTradeCount} onLastNTradeCountChange={props.onLastNTradeCountChange} />
       <div className="split">
         <ExecutionQualityPanel dashboard={d} />
         <MistakesPanel dashboard={d} />
       </div>
     </>
+  );
+}
+
+function HoldingTimePanel(props: { readonly dashboard: Dashboard }): JSX.Element {
+  const d = props.dashboard;
+  return (
+    <section className="dashboard-section">
+      <h3>Holding Time</h3>
+      <div className="metric-grid snapshot-grid">
+        <Metric label="Avg Winner Hold" value={formatHoldDays(d.averageWinningHoldDays)} tone="good" />
+        <Metric label="Avg Loser Hold" value={formatHoldDays(d.averageLosingHoldDays)} tone="bad" />
+      </div>
+    </section>
   );
 }
 

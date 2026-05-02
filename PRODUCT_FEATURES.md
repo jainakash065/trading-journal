@@ -416,6 +416,7 @@ Implemented:
   - Average Losing R.
   - Median R.
   - Expectancy excluding largest winner.
+  - Intentionally omits holding-day metrics so the dashboard stays focused on core edge.
 - Setup Edge Preview:
   - Top three setups by R expectancy.
   - Shows setup name, closed trade count, R expectancy, and P&L.
@@ -443,6 +444,10 @@ Implemented:
   - `1R to 3R`
   - `3R to 5R`
   - `> 5R`
+- Holding Time:
+  - Period-aware average winner hold days.
+  - Period-aware average loser hold days.
+  - Uses fully closed trades in the selected period.
 - Last N Closed Trades:
   - Sample-based view of the most recent fully closed entry trades.
   - Supports Last 10, Last 20, and Last 50.
@@ -453,6 +458,7 @@ Implemented:
   - Shows P&L, win rate, R expectancy, average winning R, average losing R, expectancy excluding largest winner, average winner hold days, and average loser hold days.
   - Includes a separate Last N R Distribution panel.
   - Last N analytics are independent of the selected dashboard period.
+  - Last N hold-day metrics are sample-based and separate from the period-based Holding Time section.
 - Execution Quality:
   - Rules followed P&L.
   - Rules broken P&L.

@@ -132,6 +132,22 @@ nav {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
+.analytics-with-distribution {
+  align-items: stretch;
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(0, 2fr) minmax(320px, 1fr);
+}
+
+.analytics-main {
+  align-content: start;
+}
+
+.analytics-side {
+  align-content: start;
+  display: grid;
+}
+
 .snapshot-grid {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
@@ -739,6 +755,9 @@ small {
   }
   .period-selector {
     min-width: 0;
+  }
+  .analytics-with-distribution {
+    grid-template-columns: 1fr;
   }
   .metric-grid, .snapshot-grid, .form-grid, .table-head, .table-row {
     grid-template-columns: 1fr;

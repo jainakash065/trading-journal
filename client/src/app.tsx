@@ -257,15 +257,20 @@ function DashboardView(props: {
       </section>
       <section className="dashboard-section">
         <h3>Asymmetric Edge</h3>
-        <div className="metric-grid">
-          <Metric label="R Expectancy" value={formatR(d.rExpectancy)} tone={getNumberTone(d.rExpectancy)} />
-          <Metric label="Avg Winning R" value={formatR(d.averageWinningR)} tone="good" />
-          <Metric label="Avg Losing R" value={formatR(d.averageLosingR)} tone="bad" />
-          <Metric label="Avg Winner Hold" value={formatHoldDays(d.averageWinningHoldDays)} tone="good" />
-          <Metric label="Avg Loser Hold" value={formatHoldDays(d.averageLosingHoldDays)} tone="bad" />
-          <Metric label="Median R" value={formatR(d.medianR)} tone={getNumberTone(d.medianR)} />
-          <Metric label="Largest Winner R" value={formatR(d.largestWinnerR)} tone="good" />
-          <Metric label="Expectancy Ex-Largest" value={formatR(d.expectancyWithoutLargestWinner)} tone={getNumberTone(d.expectancyWithoutLargestWinner)} />
+        <div className="analytics-with-distribution">
+          <div className="analytics-main metric-grid">
+            <Metric label="R Expectancy" value={formatR(d.rExpectancy)} tone={getNumberTone(d.rExpectancy)} />
+            <Metric label="Avg Winning R" value={formatR(d.averageWinningR)} tone="good" />
+            <Metric label="Avg Losing R" value={formatR(d.averageLosingR)} tone="bad" />
+            <Metric label="Avg Winner Hold" value={formatHoldDays(d.averageWinningHoldDays)} tone="good" />
+            <Metric label="Avg Loser Hold" value={formatHoldDays(d.averageLosingHoldDays)} tone="bad" />
+            <Metric label="Median R" value={formatR(d.medianR)} tone={getNumberTone(d.medianR)} />
+            <Metric label="Largest Winner R" value={formatR(d.largestWinnerR)} tone="good" />
+            <Metric label="Expectancy Ex-Largest" value={formatR(d.expectancyWithoutLargestWinner)} tone={getNumberTone(d.expectancyWithoutLargestWinner)} />
+          </div>
+          <div className="analytics-side">
+            <RDistributionPanel buckets={d.rDistribution} subtitle={`${getDistributionTotal(d.rDistribution)} closed trades in this period`} title="Period R Distribution" />
+          </div>
         </div>
       </section>
       <section className="dashboard-section">
@@ -281,19 +286,23 @@ function DashboardView(props: {
             </select>
           </label>
         </div>
-        <div className="metric-grid">
-          <Metric label="P&L" value={money(d.lastNTrades.pnl)} tone={getNumberTone(d.lastNTrades.pnl)} />
-          <Metric label="Win rate" value={`${d.lastNTrades.winRate}%`} />
-          <Metric label="Average R" value={formatR(d.lastNTrades.averageR)} tone={getNumberTone(d.lastNTrades.averageR)} />
-          <Metric label="R Expectancy" value={formatR(d.lastNTrades.rExpectancy)} tone={getNumberTone(d.lastNTrades.rExpectancy)} />
-          <Metric label="Profit factor" value={String(d.lastNTrades.profitFactor)} />
-          <Metric label="Avg Winning R" value={formatR(d.lastNTrades.averageWinningR)} tone="good" />
-          <Metric label="Avg Losing R" value={formatR(d.lastNTrades.averageLosingR)} tone="bad" />
-          <Metric label="Expectancy Ex-Largest" value={formatR(d.lastNTrades.expectancyWithoutLargestWinner)} tone={getNumberTone(d.lastNTrades.expectancyWithoutLargestWinner)} />
-          <Metric label="Avg Winner Hold" value={formatHoldDays(d.lastNTrades.averageWinningHoldDays)} tone="good" />
-          <Metric label="Avg Loser Hold" value={formatHoldDays(d.lastNTrades.averageLosingHoldDays)} tone="bad" />
+        <div className="analytics-with-distribution">
+          <div className="analytics-main metric-grid">
+            <Metric label="P&L" value={money(d.lastNTrades.pnl)} tone={getNumberTone(d.lastNTrades.pnl)} />
+            <Metric label="Win rate" value={`${d.lastNTrades.winRate}%`} />
+            <Metric label="Average R" value={formatR(d.lastNTrades.averageR)} tone={getNumberTone(d.lastNTrades.averageR)} />
+            <Metric label="R Expectancy" value={formatR(d.lastNTrades.rExpectancy)} tone={getNumberTone(d.lastNTrades.rExpectancy)} />
+            <Metric label="Profit factor" value={String(d.lastNTrades.profitFactor)} />
+            <Metric label="Avg Winning R" value={formatR(d.lastNTrades.averageWinningR)} tone="good" />
+            <Metric label="Avg Losing R" value={formatR(d.lastNTrades.averageLosingR)} tone="bad" />
+            <Metric label="Expectancy Ex-Largest" value={formatR(d.lastNTrades.expectancyWithoutLargestWinner)} tone={getNumberTone(d.lastNTrades.expectancyWithoutLargestWinner)} />
+            <Metric label="Avg Winner Hold" value={formatHoldDays(d.lastNTrades.averageWinningHoldDays)} tone="good" />
+            <Metric label="Avg Loser Hold" value={formatHoldDays(d.lastNTrades.averageLosingHoldDays)} tone="bad" />
+          </div>
+          <div className="analytics-side">
+            <RDistributionPanel buckets={d.lastNTrades.rDistribution} subtitle={`${d.lastNTrades.actualCount} closed trades in this sample`} title="Last N R Distribution" />
+          </div>
         </div>
-        <RDistributionPanel buckets={d.lastNTrades.rDistribution} subtitle={`${d.lastNTrades.actualCount} closed trades in this sample`} />
       </section>
       <div className="split">
         <section className="panel">
@@ -311,18 +320,17 @@ function DashboardView(props: {
             <div className="row" key={item.label}><span>{item.label}</span><strong>{item.count}</strong></div>
           ))}
         </section>
-        <RDistributionPanel buckets={d.rDistribution} subtitle={`${getDistributionTotal(d.rDistribution)} closed trades in this period`} />
       </div>
     </>
   );
 }
 
-function RDistributionPanel(props: { readonly buckets: readonly RDistributionBucket[]; readonly subtitle: string }): JSX.Element {
+function RDistributionPanel(props: { readonly buckets: readonly RDistributionBucket[]; readonly subtitle: string; readonly title: string }): JSX.Element {
   const totalCount: number = getDistributionTotal(props.buckets);
   const maxCount: number = getDistributionMax(props.buckets);
   return (
     <section className="panel">
-      <h2>R Distribution</h2>
+      <h2>{props.title}</h2>
       <p className="muted">{props.subtitle}</p>
       <div className="distribution-list">
         {props.buckets.map((bucket: RDistributionBucket) => (

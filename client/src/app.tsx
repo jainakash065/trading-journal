@@ -242,6 +242,8 @@ function DashboardView(props: {
           <Metric label="R Expectancy" value={formatR(d.rExpectancy)} tone={getNumberTone(d.rExpectancy)} />
           <Metric label="Avg Winning R" value={formatR(d.averageWinningR)} tone="good" />
           <Metric label="Avg Losing R" value={formatR(d.averageLosingR)} tone="bad" />
+          <Metric label="Avg Winner Hold" value={formatHoldDays(d.averageWinningHoldDays)} tone="good" />
+          <Metric label="Avg Loser Hold" value={formatHoldDays(d.averageLosingHoldDays)} tone="bad" />
           <Metric label="Median R" value={formatR(d.medianR)} tone={getNumberTone(d.medianR)} />
           <Metric label="Largest Winner R" value={formatR(d.largestWinnerR)} tone="good" />
           <Metric label="Expectancy Ex-Largest" value={formatR(d.expectancyWithoutLargestWinner)} tone={getNumberTone(d.expectancyWithoutLargestWinner)} />
@@ -948,6 +950,10 @@ function formatSignedPercent(value: number): string {
 
 function formatR(value: number): string {
   return `${value.toFixed(2)}R`;
+}
+
+function formatHoldDays(value: number): string {
+  return `${value.toFixed(2)}d`;
 }
 
 function formatDuration(durationDays: number): string {

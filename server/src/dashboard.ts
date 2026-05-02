@@ -7,7 +7,9 @@ type ClosedTradeMetric = {
   readonly setupName: string | null;
   readonly realizedPnl: number;
   readonly finalR: number;
+  readonly entryDate: string;
   readonly closedDate: string;
+  readonly durationDays: number;
   readonly followedPlan: number | null;
   readonly ruleScore: number | null;
 };
@@ -46,6 +48,8 @@ type RAnalytics = {
   readonly lossPercentage: number;
   readonly averageWinningR: number;
   readonly averageLosingR: number;
+  readonly averageWinningHoldDays: number;
+  readonly averageLosingHoldDays: number;
   readonly rExpectancy: number;
   readonly medianR: number;
   readonly largestWinnerR: number;
@@ -78,6 +82,8 @@ export type Dashboard = {
   readonly averageR: number;
   readonly averageWinningR: number;
   readonly averageLosingR: number;
+  readonly averageWinningHoldDays: number;
+  readonly averageLosingHoldDays: number;
   readonly rExpectancy: number;
   readonly medianR: number;
   readonly largestWinnerR: number;
@@ -142,6 +148,8 @@ export function buildDashboard(db: Database.Database, periodKey: DashboardPeriod
     averageR: average(periodTrades.map((trade: ClosedTradeMetric) => trade.finalR)),
     averageWinningR: rAnalytics.averageWinningR,
     averageLosingR: rAnalytics.averageLosingR,
+    averageWinningHoldDays: rAnalytics.averageWinningHoldDays,
+    averageLosingHoldDays: rAnalytics.averageLosingHoldDays,
     rExpectancy: rAnalytics.rExpectancy,
     medianR: rAnalytics.medianR,
     largestWinnerR: rAnalytics.largestWinnerR,
@@ -176,7 +184,9 @@ function listClosedTradeMetrics(db: Database.Database): readonly ClosedTradeMetr
         THEN ROUND(COALESCE(SUM(e.pnl), 0) / ((t.entry_price - t.stop_loss) * t.quantity), 2)
         ELSE 0
       END AS finalR,
+      t.entry_date AS entryDate,
       MAX(e.exit_date) AS closedDate,
+      CAST(JULIANDAY(MAX(e.exit_date)) - JULIANDAY(t.entry_date) + 1 AS INTEGER) AS durationDays,
       r.followed_plan AS followedPlan, r.rule_score AS ruleScore
     FROM trades t
     JOIN trade_exits e ON e.trade_id = t.id
@@ -219,11 +229,15 @@ function calculateRAnalytics(trades: readonly ClosedTradeMetric[]): RAnalytics {
   const lossRateDecimal: number = trades.length > 0 ? losingRValues.length / trades.length : 0;
   const averageWinningRRaw: number = averageRaw(winningRValues);
   const averageLosingRRaw: number = averageRaw(losingRValues.map((value: number) => Math.abs(value)));
+  const winningTrades: readonly ClosedTradeMetric[] = trades.filter((trade: ClosedTradeMetric) => trade.finalR > 0);
+  const losingTrades: readonly ClosedTradeMetric[] = trades.filter((trade: ClosedTradeMetric) => trade.finalR < 0);
   return {
     winPercentage: round(winRateDecimal * 100),
     lossPercentage: round(lossRateDecimal * 100),
     averageWinningR: round(averageWinningRRaw),
     averageLosingR: round(averageLosingRRaw),
+    averageWinningHoldDays: average(winningTrades.map((trade: ClosedTradeMetric) => trade.durationDays)),
+    averageLosingHoldDays: average(losingTrades.map((trade: ClosedTradeMetric) => trade.durationDays)),
     rExpectancy: round((winRateDecimal * averageWinningRRaw) - (lossRateDecimal * averageLosingRRaw)),
     medianR: calculateMedian(rValues),
     largestWinnerR: winningRValues.length > 0 ? round(Math.max(...winningRValues)) : 0,

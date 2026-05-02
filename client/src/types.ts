@@ -103,6 +103,8 @@ export type Dashboard = {
   readonly averageR: number;
   readonly averageWinningR: number;
   readonly averageLosingR: number;
+  readonly averageWinningHoldDays: number;
+  readonly averageLosingHoldDays: number;
   readonly rExpectancy: number;
   readonly medianR: number;
   readonly largestWinnerR: number;

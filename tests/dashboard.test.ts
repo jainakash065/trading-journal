@@ -147,6 +147,8 @@ describe("dashboard period metrics", () => {
     expect(dashboard.lossPercentage).toBe(50);
     expect(dashboard.averageWinningR).toBe(3.12);
     expect(dashboard.averageLosingR).toBe(0.89);
+    expect(dashboard.averageWinningHoldDays).toBe(3);
+    expect(dashboard.averageLosingHoldDays).toBe(3);
     expect(dashboard.rExpectancy).toBe(1.12);
     expect(dashboard.medianR).toBe(-0.18);
     expect(dashboard.largestWinnerR).toBe(11.23);
@@ -170,6 +172,19 @@ describe("dashboard period metrics", () => {
     const dashboard: Dashboard = buildDashboard(db, "last_month", dashboardToday);
 
     expect(dashboard.medianR).toBe(0.5);
+  });
+
+  it("calculates average winner and loser holding days while ignoring breakeven trades", () => {
+    const db: Database.Database = createDashboardDatabase();
+    createClosedTradeWithFinalR(db, { symbol: "WINLONG", finalR: 2, entryDate: "2026-04-01", exitDate: "2026-04-05" });
+    createClosedTradeWithFinalR(db, { symbol: "WINSHORT", finalR: 1, entryDate: "2026-04-10", exitDate: "2026-04-10" });
+    createClosedTradeWithFinalR(db, { symbol: "LOSS", finalR: -1, entryDate: "2026-04-12", exitDate: "2026-04-13" });
+    createClosedTradeWithFinalR(db, { symbol: "BREAKEVEN", finalR: 0, entryDate: "2026-04-01", exitDate: "2026-04-20" });
+
+    const dashboard: Dashboard = buildDashboard(db, "last_month", dashboardToday);
+
+    expect(dashboard.averageWinningHoldDays).toBe(3);
+    expect(dashboard.averageLosingHoldDays).toBe(2);
   });
 
   it("infers capital history start date for existing journal data", () => {

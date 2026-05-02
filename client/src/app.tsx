@@ -1,7 +1,7 @@
 import { Activity, BarChart3, BookOpen, ClipboardCheck, IndianRupee, Pencil, Plus, Settings as SettingsIcon, Trash2, X } from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
 import { apiDelete, apiGet, apiSend, endpoints, type AppData, type ReferenceData, uploadScreenshot } from "./api";
-import type { Dashboard, DashboardPeriodKey, Settings, Trade, TradeExit } from "./types";
+import type { Dashboard, DashboardPeriodKey, RDistributionBucket, Settings, Trade, TradeExit } from "./types";
 
 type View = "dashboard" | "new" | "open" | "closed" | "settings";
 
@@ -266,14 +266,31 @@ function DashboardView(props: {
             <div className="row" key={item.label}><span>{item.label}</span><strong>{item.count}</strong></div>
           ))}
         </section>
-        <section className="panel">
-          <h2>R Distribution</h2>
-          {d.rDistribution.map((bucket) => (
-            <div className="row" key={bucket.label}><span>{bucket.label}</span><strong>{bucket.count}</strong></div>
-          ))}
-        </section>
+        <RDistributionPanel buckets={d.rDistribution} />
       </div>
     </>
+  );
+}
+
+function RDistributionPanel(props: { readonly buckets: readonly RDistributionBucket[] }): JSX.Element {
+  const totalCount: number = getDistributionTotal(props.buckets);
+  const maxCount: number = getDistributionMax(props.buckets);
+  return (
+    <section className="panel">
+      <h2>R Distribution</h2>
+      <p className="muted">{totalCount} closed trades in this period</p>
+      <div className="distribution-list">
+        {props.buckets.map((bucket: RDistributionBucket) => (
+          <div className="distribution-row" key={bucket.label}>
+            <span className="distribution-label">{bucket.label}</span>
+            <span className="distribution-track" aria-label={`${bucket.label}: ${bucket.count} trades, ${formatDistributionPercentage(bucket.count, totalCount)}`}>
+              <span className={`distribution-bar ${getDistributionToneClass(bucket.label)}`} style={{ width: `${getDistributionWidth(bucket.count, maxCount)}%` }} />
+            </span>
+            <strong>{bucket.count} · {formatDistributionPercentage(bucket.count, totalCount)}</strong>
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -993,6 +1010,41 @@ function formatSignedPercent(value: number): string {
 
 function formatR(value: number): string {
   return `${value.toFixed(2)}R`;
+}
+
+function getDistributionTotal(buckets: readonly RDistributionBucket[]): number {
+  return buckets.reduce((total: number, bucket: RDistributionBucket) => total + bucket.count, 0);
+}
+
+function getDistributionMax(buckets: readonly RDistributionBucket[]): number {
+  return buckets.reduce((max: number, bucket: RDistributionBucket) => Math.max(max, bucket.count), 0);
+}
+
+function getDistributionWidth(count: number, maxCount: number): number {
+  if (maxCount <= 0) {
+    return 0;
+  }
+  return (count / maxCount) * 100;
+}
+
+function formatDistributionPercentage(count: number, totalCount: number): string {
+  if (totalCount <= 0) {
+    return "0.0%";
+  }
+  return `${((count / totalCount) * 100).toFixed(1)}%`;
+}
+
+function getDistributionToneClass(label: string): string {
+  if (label === "<= -1R" || label === "-1R to 0R") {
+    return "distribution-bar-loss";
+  }
+  if (label === "> 5R") {
+    return "distribution-bar-outlier";
+  }
+  if (label === "0R to 1R") {
+    return "distribution-bar-neutral";
+  }
+  return "distribution-bar-win";
 }
 
 function formatHoldDays(value: number): string {

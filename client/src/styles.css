@@ -200,6 +200,62 @@ nav {
   padding: 10px 0;
 }
 
+.distribution-list {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.distribution-row {
+  align-items: center;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(72px, .8fr) minmax(90px, 1.4fr) minmax(76px, auto);
+}
+
+.distribution-label {
+  color: #56616a;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.distribution-track {
+  background: #f1eee7;
+  border-radius: 999px;
+  height: 10px;
+  overflow: hidden;
+}
+
+.distribution-bar {
+  border-radius: inherit;
+  display: block;
+  height: 100%;
+  min-width: 0;
+}
+
+.distribution-bar-loss {
+  background: #bb3e2d;
+}
+
+.distribution-bar-neutral {
+  background: #8ba99a;
+}
+
+.distribution-bar-win {
+  background: #16803c;
+}
+
+.distribution-bar-outlier {
+  background: #0f5f2d;
+}
+
+.distribution-row strong {
+  color: #122620;
+  font-size: 13px;
+  text-align: right;
+  white-space: nowrap;
+}
+
 .exit-row {
   gap: 10px;
 }

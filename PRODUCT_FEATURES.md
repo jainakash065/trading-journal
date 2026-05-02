@@ -11,6 +11,7 @@ Create a free, local-first trading journal web app for Indian stock swing tradin
 - May pyramid, but each pyramid entry is tracked as a separate trade.
 - Uses predefined setups and a pre-entry checklist.
 - Defines stop loss before entry.
+- Moves stops during trade management, including moving remaining quantity to breakeven after favorable movement.
 - Uses percentage-based risk per trade, where the percentage can vary by trade.
 - Wants R-multiple tracking, emotional notes, screenshots, lessons learned, and dashboard analytics.
 
@@ -58,6 +59,7 @@ Implemented:
 - Capital ledger rows from realized exits.
 - Realized P&L impact on capital.
 - Open risk exposure.
+- Current open risk based on active stop loss and remaining quantity.
 - Trade-level portfolio impact percentage:
   - `portfolioImpactPercentage = realizedPnl / riskCapitalBase * 100`
 - Capital history start date:
@@ -90,7 +92,11 @@ Future scope:
 Implemented:
 
 - Entry price.
-- Stop-loss price.
+- Initial stop-loss price.
+- Active/current stop-loss price:
+  - Defaults to the initial stop loss when a trade is created.
+  - Can be updated after entry without changing original R calculations.
+  - Can be moved to breakeven from the trade detail drawer.
 - Linked stop-loss percentage and stop-loss price inputs:
   - For buy trades: `stopLossPrice = entryPrice * (1 - stopLossPercent / 100)`
   - Editing either value updates the other.
@@ -107,12 +113,19 @@ Implemented:
   - `entryPrice * quantity`
 - Position size percentage:
   - `positionValue / riskCapitalBase * 100`
+- Current open risk:
+  - `max(0, entryPrice - activeStopLoss) * remainingQuantity`
+  - Uses active stop loss, not initial stop loss.
+  - Breakeven or trailed-above-entry stops contribute zero open risk.
 
 Future scope:
 
 - Planned target and planned reward-to-risk ratio.
 - Position sizing simulator.
 - Multi-scenario risk preview before saving a trade.
+- Stop movement history with date, reason, and notes.
+- Locked-profit display when active stop is above entry.
+- Trailing-stop analytics.
 
 ## Trade Entry
 
@@ -209,6 +222,8 @@ Implemented:
 
 - Edit entry-level trade fields from the trade detail drawer.
 - Edit individual exits.
+- Update active stop separately from the original stop loss.
+- Move active stop to breakeven from the trade detail drawer.
 - Editing entry price, stop loss, or quantity recalculates:
   - Exit P&L.
   - Exit R contribution.
@@ -235,6 +250,7 @@ Future scope:
 - Undo delete through backup/history.
 - Version history for edits.
 - Delete individual screenshots without deleting the trade or exit.
+- Historical audit trail for stop-loss movements.
 
 ## Screenshots
 
@@ -365,6 +381,20 @@ Implemented:
   - Average R.
   - Profit factor.
   - Max drawdown based on booked realized exits in exit-date order.
+- Asymmetric Edge:
+  - R Expectancy.
+  - Average Winning R.
+  - Average Losing R.
+  - Median R.
+  - Largest Winner R.
+  - Expectancy excluding largest winner.
+- R Distribution:
+  - `<= -1R`
+  - `-1R to 0R`
+  - `0R to 1R`
+  - `1R to 3R`
+  - `3R to 5R`
+  - `> 5R`
 - Execution Quality:
   - Rules followed P&L.
   - Rules broken P&L.
@@ -376,9 +406,12 @@ Implemented:
 Current dashboard rules:
 
 - Closed-trade quality metrics are filtered by final exit date.
+- R expectancy and R distribution are based only on fully closed trades.
+- Partial exits from still-open trades affect Booked P&L and Open Realized P&L, but not win rate, average R, expectancy, or R distribution.
 - Booked P&L and max drawdown use realized exit booking dates, including partial exits.
 - Capital is realized-only.
 - Open trade counts and open risk are current account snapshot values, not period-filtered values.
+- Open risk uses active stop loss and remaining quantity.
 
 Future scope:
 
@@ -391,6 +424,9 @@ Future scope:
   - Setup distribution.
   - Mistake trend.
 - Drill-down from dashboard cards to filtered trades.
+- Expectancy trend by month, setup, and financial year.
+- Outlier sensitivity analysis beyond excluding the single largest winner.
+- Expectancy including only reviewed trades or only rule-following trades.
 - Revisit drawdown variants later if needed:
   - Booked realized drawdown.
   - Closed-trade drawdown.
@@ -441,12 +477,15 @@ Implemented:
 - R summary.
 - Capital and portfolio impact.
 - Planned risk, actual risk, risk used.
+- Initial stop loss, active stop loss, and current open risk.
 - Position value and position percentage.
 - Checklist.
 - Add exit form.
 - Edit trade form.
 - Edit exit form.
 - Review form.
+- Active stop quick edit.
+- Move active stop to breakeven action.
 
 Drawer usability:
 
@@ -461,6 +500,7 @@ Future scope:
 - Wider detail layout for larger screens.
 - Dedicated full-page trade detail route.
 - Inline chart/screenshot comparison.
+- Stop movement timeline.
 
 ## User Feedback And Safety
 
@@ -529,6 +569,17 @@ trading-journal-backup-2026-05-01.zip
 
 ## Suggested Next Enhancements
 
+Recently left out of current scope:
+
+- Custom dashboard date range picker.
+- Any FY selector beyond Current FY and Last FY.
+- Stop movement history and stop movement notes.
+- Locked-profit display when active stop is above entry.
+- Including partial/open trades in expectancy analytics.
+- Unrealized/mark-to-market dashboard metrics.
+- Brokerage, charges, and tax-adjusted net P&L calculations.
+- Full backup/export/import workflow.
+
 - Any FY selector.
 - Custom date range picker.
 - Manual deposits and withdrawals.
@@ -544,6 +595,8 @@ trading-journal-backup-2026-05-01.zip
 - Intraday/STCG tax estimate tracking, with LTCG out of scope for now.
 - Chart annotations.
 - Advanced expectancy analytics.
+- R distribution drill-down.
+- Expectancy by setup and rule-following behavior.
 - Position sizing simulator.
 - Streak analysis.
 - Drawdown analysis variants.

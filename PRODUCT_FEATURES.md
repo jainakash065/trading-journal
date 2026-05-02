@@ -384,6 +384,17 @@ Implemented:
   - Capital change.
   - Capital change percentage.
   - Capital unavailable state for periods before capital history start.
+- Equity Curve:
+  - Period-aware realized equity curve.
+  - Uses booked realized exit ledger rows, including partial exits on their actual exit dates.
+  - Groups multiple exits on the same date into one daily curve point.
+  - Shows a flat curve for periods with capital history but no booked exits.
+  - Shows an unavailable state for periods before capital history start.
+  - Includes starting capital, ending capital, capital change, and max drawdown summary.
+  - Shows a starting-capital baseline.
+  - Uses green/red line tone based on whether ending capital is above or below starting capital.
+  - Supports hover/focus inspection with selected date, capital, booked P&L, and change from period start.
+  - Shows a crosshair, highlighted point, and in-chart tooltip for the selected curve point.
 - Period Performance:
   - Booked P&L from all realized exits in the selected period.
   - Closed Trade P&L from fully closed trades only.
@@ -441,6 +452,7 @@ Current dashboard rules:
 - Winner/loser holding-day averages use inclusive calendar days from entry date to final exit date.
 - Partial exits from still-open trades affect Booked P&L and Open Realized P&L, but not win rate, average R, expectancy, R distribution, or holding-day averages.
 - Booked P&L and max drawdown use realized exit booking dates, including partial exits.
+- Equity curve uses booked realized exit dates, not final trade close dates.
 - Capital is realized-only.
 - Open trade counts and open risk are current account snapshot values, not period-filtered values.
 - Open risk uses active stop loss and remaining quantity.
@@ -451,10 +463,10 @@ Future scope:
 - Custom date range picker.
 - Save preferred dashboard period.
 - Dashboard charts:
-  - Capital curve.
   - Monthly/weekly P&L bars.
   - Setup distribution.
   - Mistake trend.
+  - Unrealized/mark-to-market equity curve.
 - Drill-down from dashboard cards to filtered trades.
 - Expectancy trend by month, setup, and financial year.
 - Outlier sensitivity analysis beyond excluding the single largest winner.
@@ -618,7 +630,6 @@ Recently left out of current scope:
 - Locked-profit display when active stop is above entry.
 - Including partial/open trades in expectancy analytics.
 - Dashboard-level unrealized/mark-to-market metrics.
-- Live market price integration.
 - Brokerage, charges, and tax-adjusted net P&L calculations.
 - Full backup/export/import workflow.
 - CSV export.

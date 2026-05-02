@@ -1,9 +1,20 @@
-import type { Dashboard, ReferenceItem, Settings, Trade } from "./types";
+import type { Dashboard, DashboardPeriodKey, LastNTradeCount, PagedTrades, ReferenceItem, Settings, Trade } from "./types";
 
 export type ReferenceData = {
   readonly setups: readonly ReferenceItem[];
+  readonly entryMethods: readonly ReferenceItem[];
   readonly checklistItems: readonly ReferenceItem[];
   readonly mistakeTags: readonly ReferenceItem[];
+};
+
+export type ClosedTradeOutcomeFilter = "all" | "winners" | "losers" | "breakeven";
+
+export type ClosedTradeFilters = {
+  readonly symbol: string;
+  readonly period: DashboardPeriodKey;
+  readonly setupId: string;
+  readonly entryMethodId: string;
+  readonly outcome: ClosedTradeOutcomeFilter;
 };
 
 export async function apiGet<T>(path: string): Promise<T> {
@@ -11,7 +22,7 @@ export async function apiGet<T>(path: string): Promise<T> {
   return parseResponse<T>(response);
 }
 
-export async function apiSend<T>(path: string, method: "POST" | "PUT", body: unknown): Promise<T> {
+export async function apiSend<T>(path: string, method: "POST" | "PUT" | "PATCH", body: unknown): Promise<T> {
   const response: Response = await fetch(path, {
     method,
     headers: { "Content-Type": "application/json" },
@@ -33,11 +44,23 @@ export async function uploadScreenshot(path: string, file: File): Promise<void> 
 }
 
 export const endpoints = {
-  dashboard: "/api/dashboard",
+  dashboard: (period: DashboardPeriodKey, lastN: LastNTradeCount) => `/api/dashboard?period=${period}&lastN=${lastN}`,
   settings: "/api/settings",
   referenceData: "/api/reference-data",
   openTrades: "/api/trades?status=open",
-  closedTrades: "/api/trades?status=closed"
+  closedTrades: (params: ClosedTradeFilters & { readonly limit: number; readonly offset: number }) => {
+    const query = new URLSearchParams({ limit: String(params.limit), offset: String(params.offset), outcome: params.outcome, period: params.period, status: "closed" });
+    if (params.symbol.trim()) {
+      query.set("symbol", params.symbol.trim());
+    }
+    if (params.setupId) {
+      query.set("setupId", params.setupId);
+    }
+    if (params.entryMethodId) {
+      query.set("entryMethodId", params.entryMethodId);
+    }
+    return `/api/trades?${query.toString()}`;
+  }
 } as const;
 
 export type AppData = {
@@ -45,7 +68,7 @@ export type AppData = {
   readonly settings: Settings;
   readonly referenceData: ReferenceData;
   readonly openTrades: readonly Trade[];
-  readonly closedTrades: readonly Trade[];
+  readonly closedTrades: PagedTrades;
 };
 
 async function parseResponse<T>(response: Response): Promise<T> {

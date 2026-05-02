@@ -3,7 +3,7 @@ import express, { type Request, type Response } from "express";
 import multer from "multer";
 import path from "node:path";
 import { z } from "zod";
-import { buildDashboard } from "./dashboard";
+import { buildDashboard, getDashboardPeriod, parseDashboardPeriodKey, parseLastNTradeCount, type DashboardPeriod } from "./dashboard";
 import { createDatabase } from "./db";
 import { entryScreenshotDir, exitScreenshotDir } from "./paths";
 import {
@@ -15,7 +15,9 @@ import {
   getReview,
   getSettings,
   getTrade,
+  listClosedTradesPage,
   listChecklistItems,
+  listEntryMethods,
   listChecklistResponses,
   listExits,
   listMistakeTags,
@@ -24,14 +26,18 @@ import {
   listTrades,
   saveScreenshot,
   updateExit,
+  updateActiveStopLoss,
+  updateCurrentPrice,
   updateReview,
   updateSettings,
   updateTrade,
-  upsertListItem
+  upsertListItem,
+  type ClosedTradeOutcome
 } from "./repository";
 import { calculateSuggestedQuantity, summarizeTrade } from "./calculations";
 
 const db = createDatabase();
+const defaultClosedTradeLimit = 50;
 
 const tradeSchema = z.object({
   symbol: z.string().min(1),
@@ -41,9 +47,12 @@ const tradeSchema = z.object({
   entryPrice: z.coerce.number().positive(),
   quantity: z.coerce.number().int().positive(),
   stopLoss: z.coerce.number().positive(),
+  activeStopLoss: z.coerce.number().positive().optional(),
+  currentPrice: z.coerce.number().positive().nullable().optional(),
   riskPercentage: z.coerce.number().nonnegative(),
   riskCapitalBase: z.coerce.number().nonnegative(),
   setupId: z.coerce.number().int().nullable(),
+  entryMethodId: z.coerce.number().int().nullable().default(null),
   entryReason: z.string().default(""),
   emotionalState: z.string().default(""),
   confidence: z.coerce.number().int().min(1).max(5),
@@ -62,6 +71,14 @@ const exitSchema = z.object({
   reason: z.string().default(""),
   emotionalState: z.string().default(""),
   notes: z.string().default("")
+});
+
+const activeStopSchema = z.object({
+  activeStopLoss: z.coerce.number().positive()
+});
+
+const currentPriceSchema = z.object({
+  currentPrice: z.coerce.number().positive()
 });
 
 const reviewSchema = z.object({
@@ -99,13 +116,14 @@ export function createApp(): express.Express {
   app.put("/api/settings", (request: Request, response: Response) => response.json(updateSettings(db, request.body as Record<string, string>)));
   app.get("/api/reference-data", (_request: Request, response: Response) => response.json({
     setups: listSetups(db),
+    entryMethods: listEntryMethods(db),
     checklistItems: listChecklistItems(db),
     mistakeTags: listMistakeTags(db)
   }));
   app.post("/api/reference-data/:type", (request: Request, response: Response) => {
     const type = request.params.type;
     const value: string = String(request.body.value ?? "").trim();
-    const table = type === "setups" ? "setups" : type === "checklist" ? "checklist_items" : "mistake_tags";
+    const table = type === "setups" ? "setups" : type === "entry-methods" ? "entry_methods" : type === "checklist" ? "checklist_items" : "mistake_tags";
     response.json(upsertListItem(db, table, value));
   });
   app.get("/api/risk/suggested-quantity", (request: Request, response: Response) => {
@@ -119,7 +137,19 @@ export function createApp(): express.Express {
     });
   });
   app.get("/api/trades", (request: Request, response: Response) => {
-    response.json(listTrades(db, request.query.status === "closed").map((trade) => {
+    if (request.query.status === "closed") {
+      const filters = parseClosedTradeFilters(request.query);
+      const page = listClosedTradesPage(db, filters);
+      response.json({
+        ...page,
+        items: page.items.map((trade) => {
+          const exits = listExits(db, trade.id);
+          return { ...trade, summary: summarizeTrade(trade, exits) };
+        })
+      });
+      return;
+    }
+    response.json(listTrades(db, false).map((trade) => {
       const exits = listExits(db, trade.id);
       return { ...trade, summary: summarizeTrade(trade, exits) };
     }));
@@ -151,6 +181,14 @@ export function createApp(): express.Express {
   });
   app.put("/api/trades/:id", (request: Request, response: Response) => {
     updateTrade(db, Number(request.params.id), tradeSchema.parse(request.body));
+    response.json({ ok: true });
+  });
+  app.patch("/api/trades/:id/active-stop", (request: Request, response: Response) => {
+    updateActiveStopLoss(db, { tradeId: Number(request.params.id), ...activeStopSchema.parse(request.body) });
+    response.json({ ok: true });
+  });
+  app.patch("/api/trades/:id/current-price", (request: Request, response: Response) => {
+    updateCurrentPrice(db, { tradeId: Number(request.params.id), ...currentPriceSchema.parse(request.body) });
     response.json({ ok: true });
   });
   app.post("/api/trades/:id/exits", (request: Request, response: Response) => {
@@ -189,10 +227,54 @@ export function createApp(): express.Express {
     saveScreenshot(db, { tradeId: Number(request.params.id), exitId: Number(request.params.exitId), type: "exit", filePath: request.file.path, originalName: request.file.originalname });
     response.status(201).json({ ok: true });
   });
-  app.get("/api/dashboard", (_request: Request, response: Response) => response.json(buildDashboard(db)));
+  app.get("/api/dashboard", (request: Request, response: Response) => {
+    response.json(buildDashboard(db, parseDashboardPeriodKey(request.query.period), new Date(), parseLastNTradeCount(request.query.lastN)));
+  });
   app.use((error: unknown, _request: Request, response: Response, _next: express.NextFunction) => {
     const message: string = error instanceof Error ? error.message : "Unexpected server error";
     response.status(400).json({ message });
   });
   return app;
+}
+
+function parseClosedTradeFilters(query: Request["query"]): {
+  readonly limit: number;
+  readonly offset: number;
+  readonly symbol: string;
+  readonly setupId: number | null;
+  readonly entryMethodId: number | null;
+  readonly outcome: ClosedTradeOutcome;
+  readonly periodStart: string | null;
+  readonly periodEnd: string | null;
+} {
+  const periodRange: DashboardPeriod = getDashboardPeriod(parseDashboardPeriodKey(query.period), new Date());
+  return {
+    limit: getPositiveInteger(query.limit, defaultClosedTradeLimit),
+    offset: getNonNegativeInteger(query.offset),
+    symbol: typeof query.symbol === "string" ? query.symbol : "",
+    setupId: getNullableInteger(query.setupId),
+    entryMethodId: getNullableInteger(query.entryMethodId),
+    outcome: parseClosedTradeOutcome(query.outcome),
+    periodStart: periodRange.startDate,
+    periodEnd: periodRange.key === "all_time" ? null : periodRange.endDate
+  };
+}
+
+function getPositiveInteger(value: unknown, fallback: number): number {
+  const parsed: number = typeof value === "string" ? Number(value) : fallback;
+  return Number.isInteger(parsed) && parsed > 0 ? Math.min(parsed, 100) : fallback;
+}
+
+function getNonNegativeInteger(value: unknown): number {
+  const parsed: number = typeof value === "string" ? Number(value) : 0;
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : 0;
+}
+
+function getNullableInteger(value: unknown): number | null {
+  const parsed: number = typeof value === "string" && value !== "" ? Number(value) : Number.NaN;
+  return Number.isInteger(parsed) ? parsed : null;
+}
+
+function parseClosedTradeOutcome(value: unknown): ClosedTradeOutcome {
+  return value === "winners" || value === "losers" || value === "breakeven" ? value : "all";
 }

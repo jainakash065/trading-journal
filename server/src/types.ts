@@ -9,6 +9,9 @@ export type TradeRow = {
   readonly entryPrice: number;
   readonly quantity: number;
   readonly stopLoss: number;
+  readonly activeStopLoss: number;
+  readonly currentPrice: number | null;
+  readonly currentPriceUpdatedAt: string | null;
   readonly riskPercentage: number;
   readonly riskCapitalBase: number;
   readonly plannedRiskAmount: number;
@@ -16,8 +19,13 @@ export type TradeRow = {
   readonly positionSizePercentage: number;
   readonly actualRisk: number;
   readonly riskUsedPercentage: number;
+  readonly unrealizedPnl: number;
+  readonly unrealizedR: number;
+  readonly unrealizedPortfolioImpactPercentage: number;
   readonly setupId: number | null;
   readonly setupName: string | null;
+  readonly entryMethodId: number | null;
+  readonly entryMethodName: string | null;
   readonly entryReason: string;
   readonly emotionalState: string;
   readonly confidence: number;

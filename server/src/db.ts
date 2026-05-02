@@ -14,6 +14,7 @@ export function initializeDatabase(db: Database.Database): void {
   db.pragma("foreign_keys = ON");
   migrate(db);
   seed(db);
+  ensureCapitalHistoryStartDate(db);
   backfillExitRMultiples(db);
 }
 
@@ -24,6 +25,11 @@ function migrate(db: Database.Database): void {
       value TEXT NOT NULL
     );
     CREATE TABLE IF NOT EXISTS setups (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL UNIQUE,
+      active INTEGER NOT NULL DEFAULT 1
+    );
+    CREATE TABLE IF NOT EXISTS entry_methods (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL UNIQUE,
       active INTEGER NOT NULL DEFAULT 1
@@ -57,17 +63,22 @@ function migrate(db: Database.Database): void {
       entry_price REAL NOT NULL,
       quantity INTEGER NOT NULL,
       stop_loss REAL NOT NULL,
+      active_stop_loss REAL NOT NULL DEFAULT 0,
+      current_price REAL,
+      current_price_updated_at TEXT,
       risk_percentage REAL NOT NULL,
       risk_capital_base REAL NOT NULL DEFAULT 0,
       planned_risk_amount REAL NOT NULL,
       setup_id INTEGER,
+      entry_method_id INTEGER,
       entry_reason TEXT NOT NULL DEFAULT '',
       emotional_state TEXT NOT NULL DEFAULT '',
       confidence INTEGER NOT NULL DEFAULT 3,
       notes TEXT NOT NULL DEFAULT '',
       status TEXT NOT NULL DEFAULT 'open',
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (setup_id) REFERENCES setups(id)
+      FOREIGN KEY (setup_id) REFERENCES setups(id),
+      FOREIGN KEY (entry_method_id) REFERENCES entry_methods(id)
     );
     CREATE TABLE IF NOT EXISTS trade_checklist_responses (
       trade_id INTEGER NOT NULL,
@@ -125,7 +136,11 @@ function migrate(db: Database.Database): void {
     );
   `);
   addRiskCapitalBaseColumn(db);
+  addActiveStopLossColumn(db);
+  addCurrentPriceColumns(db);
+  addEntryMethodColumn(db);
   backfillRiskCapitalBase(db);
+  backfillActiveStopLoss(db);
 }
 
 function addRiskCapitalBaseColumn(db: Database.Database): void {
@@ -149,6 +164,40 @@ function backfillRiskCapitalBase(db: Database.Database): void {
   `).run(startingCapital);
 }
 
+function addActiveStopLossColumn(db: Database.Database): void {
+  const columns = db.prepare("PRAGMA table_info(trades)").all() as { readonly name: string }[];
+  const hasColumn: boolean = columns.some((column: { readonly name: string }) => column.name === "active_stop_loss");
+  if (!hasColumn) {
+    db.prepare("ALTER TABLE trades ADD COLUMN active_stop_loss REAL NOT NULL DEFAULT 0").run();
+  }
+}
+
+function backfillActiveStopLoss(db: Database.Database): void {
+  db.prepare(`
+    UPDATE trades
+    SET active_stop_loss = stop_loss
+    WHERE active_stop_loss IS NULL OR active_stop_loss = 0
+  `).run();
+}
+
+function addCurrentPriceColumns(db: Database.Database): void {
+  const columns = db.prepare("PRAGMA table_info(trades)").all() as { readonly name: string }[];
+  if (!columns.some((column: { readonly name: string }) => column.name === "current_price")) {
+    db.prepare("ALTER TABLE trades ADD COLUMN current_price REAL").run();
+  }
+  if (!columns.some((column: { readonly name: string }) => column.name === "current_price_updated_at")) {
+    db.prepare("ALTER TABLE trades ADD COLUMN current_price_updated_at TEXT").run();
+  }
+}
+
+function addEntryMethodColumn(db: Database.Database): void {
+  const columns = db.prepare("PRAGMA table_info(trades)").all() as { readonly name: string }[];
+  const hasColumn: boolean = columns.some((column: { readonly name: string }) => column.name === "entry_method_id");
+  if (!hasColumn) {
+    db.prepare("ALTER TABLE trades ADD COLUMN entry_method_id INTEGER").run();
+  }
+}
+
 function seed(db: Database.Database): void {
   const settings: readonly [string, string][] = [
     ["startingCapital", "550000"],
@@ -162,10 +211,35 @@ function seed(db: Database.Database): void {
   ["Breakout", "Pullback", "Continuation"].forEach((name: string) => {
     db.prepare("INSERT OR IGNORE INTO setups (name) VALUES (?)").run(name);
   });
+  ["Strong start entry", "Normal pivot entry", "Oops day reversal entry"].forEach((name: string) => {
+    db.prepare("INSERT OR IGNORE INTO entry_methods (name) VALUES (?)").run(name);
+  });
   ["Trend aligned", "Valid setup", "Stop defined", "Risk acceptable", "No chase"].forEach((label: string) => {
     db.prepare("INSERT OR IGNORE INTO checklist_items (label) VALUES (?)").run(label);
   });
   ["Chased entry", "Exited early", "Moved stop", "Oversized", "Ignored market"].forEach((label: string) => {
     db.prepare("INSERT OR IGNORE INTO mistake_tags (label) VALUES (?)").run(label);
   });
+}
+
+function ensureCapitalHistoryStartDate(db: Database.Database): void {
+  const existing = db.prepare("SELECT value FROM settings WHERE key = 'capitalHistoryStartDate'").get() as { readonly value: string } | undefined;
+  if (existing?.value) {
+    return;
+  }
+  const inferredStartDate: string = inferCapitalHistoryStartDate(db);
+  db.prepare("INSERT INTO settings (key, value) VALUES ('capitalHistoryStartDate', ?)").run(inferredStartDate);
+}
+
+function inferCapitalHistoryStartDate(db: Database.Database): string {
+  const row = db.prepare(`
+    SELECT MIN(date_value) AS startDate
+    FROM (
+      SELECT MIN(entry_date) AS date_value FROM trades
+      UNION ALL
+      SELECT MIN(entry_date) AS date_value FROM capital_ledger
+    )
+    WHERE date_value IS NOT NULL
+  `).get() as { readonly startDate: string | null };
+  return row.startDate ?? new Date().toISOString().slice(0, 10);
 }

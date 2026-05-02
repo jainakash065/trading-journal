@@ -24,9 +24,12 @@ type TradeInput = {
   readonly entryPrice: number;
   readonly quantity: number;
   readonly stopLoss: number;
+  readonly activeStopLoss?: number;
+  readonly currentPrice?: number | null;
   readonly riskPercentage: number;
   readonly riskCapitalBase: number;
   readonly setupId: number | null;
+  readonly entryMethodId?: number | null;
   readonly entryReason: string;
   readonly emotionalState: string;
   readonly confidence: number;
@@ -42,6 +45,27 @@ type ExitInput = {
   readonly reason: string;
   readonly emotionalState: string;
   readonly notes: string;
+};
+
+export type ClosedTradeOutcome = "all" | "winners" | "losers" | "breakeven";
+
+export type ClosedTradeFilters = {
+  readonly limit: number;
+  readonly offset: number;
+  readonly symbol: string;
+  readonly setupId: number | null;
+  readonly entryMethodId: number | null;
+  readonly outcome: ClosedTradeOutcome;
+  readonly periodStart: string | null;
+  readonly periodEnd: string | null;
+};
+
+export type PagedTradeRows = {
+  readonly items: readonly TradeRow[];
+  readonly total: number;
+  readonly limit: number;
+  readonly offset: number;
+  readonly hasMore: boolean;
 };
 
 export function getSettings(db: Database.Database): Record<string, string> {
@@ -66,6 +90,10 @@ export function listSetups(db: Database.Database): readonly ListItem[] {
   return db.prepare("SELECT id, name, active FROM setups ORDER BY name").all() as ListItem[];
 }
 
+export function listEntryMethods(db: Database.Database): readonly ListItem[] {
+  return db.prepare("SELECT id, name, active FROM entry_methods ORDER BY name").all() as ListItem[];
+}
+
 export function listChecklistItems(db: Database.Database): readonly ListItem[] {
   return db.prepare("SELECT id, label, active FROM checklist_items ORDER BY id").all() as ListItem[];
 }
@@ -75,10 +103,13 @@ export function listMistakeTags(db: Database.Database): readonly ListItem[] {
 }
 
 export function upsertListItem(db: Database.Database, table: string, value: string): readonly ListItem[] {
-  const column: string = table === "setups" ? "name" : "label";
+  const column: string = table === "setups" || table === "entry_methods" ? "name" : "label";
   db.prepare(`INSERT OR IGNORE INTO ${table} (${column}) VALUES (?)`).run(value);
   if (table === "setups") {
     return listSetups(db);
+  }
+  if (table === "entry_methods") {
+    return listEntryMethods(db);
   }
   if (table === "checklist_items") {
     return listChecklistItems(db);
@@ -90,9 +121,9 @@ export function createTrade(db: Database.Database, input: TradeInput): number {
   const transaction = db.transaction((): number => {
     const result = db.prepare(`
       INSERT INTO trades (
-        symbol, market, direction, entry_date, entry_price, quantity, stop_loss, risk_percentage,
-        risk_capital_base, planned_risk_amount, setup_id, entry_reason, emotional_state, confidence, notes
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        symbol, market, direction, entry_date, entry_price, quantity, stop_loss, active_stop_loss, risk_percentage,
+        risk_capital_base, planned_risk_amount, setup_id, entry_method_id, entry_reason, emotional_state, confidence, notes
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       input.symbol.toUpperCase(),
       input.market,
@@ -101,10 +132,12 @@ export function createTrade(db: Database.Database, input: TradeInput): number {
       input.entryPrice,
       input.quantity,
       input.stopLoss,
+      getActiveStopLossValue(input.activeStopLoss, input.stopLoss),
       input.riskPercentage,
       input.riskCapitalBase,
       calculatePlannedRiskAmount(input),
       input.setupId,
+      input.entryMethodId ?? null,
       input.entryReason,
       input.emotionalState,
       input.confidence,
@@ -132,7 +165,7 @@ export function updateTrade(db: Database.Database, tradeId: number, input: Trade
     db.prepare(`
       UPDATE trades SET
         symbol = ?, market = ?, direction = ?, entry_date = ?, entry_price = ?, quantity = ?,
-        stop_loss = ?, risk_percentage = ?, risk_capital_base = ?, planned_risk_amount = ?, setup_id = ?,
+        stop_loss = ?, active_stop_loss = ?, risk_percentage = ?, risk_capital_base = ?, planned_risk_amount = ?, setup_id = ?, entry_method_id = ?,
         entry_reason = ?, emotional_state = ?, confidence = ?, notes = ?
       WHERE id = ?
     `).run(
@@ -143,10 +176,12 @@ export function updateTrade(db: Database.Database, tradeId: number, input: Trade
       input.entryPrice,
       input.quantity,
       input.stopLoss,
+      getActiveStopLossValue(input.activeStopLoss, trade.activeStopLoss),
       input.riskPercentage,
       input.riskCapitalBase,
       calculatePlannedRiskAmount(input),
       input.setupId,
+      input.entryMethodId ?? null,
       input.entryReason,
       input.emotionalState,
       input.confidence,
@@ -154,6 +189,7 @@ export function updateTrade(db: Database.Database, tradeId: number, input: Trade
       tradeId
     );
     replaceChecklistResponses(db, tradeId, input.checklistResponses);
+    updateCurrentPriceFromTradeInput(db, { tradeId, currentPrice: input.currentPrice, status: trade.status });
     const updatedTrade: TradeRow = getRequiredTrade(db, tradeId);
     recalculateExitsAndLedger(db, updatedTrade, exits);
     updateTradeStatus(db, updatedTrade);
@@ -165,36 +201,141 @@ export function listTrades(db: Database.Database, closed: boolean): readonly Tra
   const operator: string = closed ? "=" : "!=";
   return db.prepare(`
     SELECT t.id, t.symbol, t.market, t.direction, t.entry_date AS entryDate, t.entry_price AS entryPrice,
-      t.quantity, t.stop_loss AS stopLoss, t.risk_percentage AS riskPercentage,
+      t.quantity, t.stop_loss AS stopLoss, t.active_stop_loss AS activeStopLoss, t.risk_percentage AS riskPercentage,
+      t.current_price AS currentPrice, t.current_price_updated_at AS currentPriceUpdatedAt,
       t.risk_capital_base AS riskCapitalBase, t.planned_risk_amount AS plannedRiskAmount,
       ROUND(t.entry_price * t.quantity, 2) AS positionValue,
       CASE WHEN t.risk_capital_base > 0 THEN ROUND(((t.entry_price * t.quantity) / t.risk_capital_base) * 100, 2) ELSE 0 END AS positionSizePercentage,
       ROUND((t.entry_price - t.stop_loss) * t.quantity, 2) AS actualRisk,
       CASE WHEN t.planned_risk_amount > 0 THEN ROUND((((t.entry_price - t.stop_loss) * t.quantity) / t.planned_risk_amount) * 100, 2) ELSE 0 END AS riskUsedPercentage,
-      t.setup_id AS setupId, s.name AS setupName,
+      ${unrealizedMetricSelectSql()},
+      t.setup_id AS setupId, s.name AS setupName, t.entry_method_id AS entryMethodId, em.name AS entryMethodName,
       t.entry_reason AS entryReason, t.emotional_state AS emotionalState, t.confidence,
       t.notes, t.status, t.created_at AS createdAt
     FROM trades t
     LEFT JOIN setups s ON s.id = t.setup_id
+    LEFT JOIN entry_methods em ON em.id = t.entry_method_id
+    LEFT JOIN (
+      SELECT trade_id, SUM(quantity) AS exited_quantity
+      FROM trade_exits
+      GROUP BY trade_id
+    ) x ON x.trade_id = t.id
     WHERE t.status ${operator} 'closed'
     ORDER BY t.entry_date DESC, t.id DESC
   `).all() as TradeRow[];
 }
 
-export function getTrade(db: Database.Database, tradeId: number): TradeRow | undefined {
-  return db.prepare(`
+export function listClosedTradesPage(db: Database.Database, filters: ClosedTradeFilters): PagedTradeRows {
+  const queryParts = buildClosedTradeQueryParts(filters);
+  const total = db.prepare(`
+    SELECT COUNT(*) AS count
+    FROM (
+      ${closedTradeBaseSql(queryParts.whereClause, queryParts.havingClause)}
+    )
+  `).get(queryParts.params) as { readonly count: number };
+  const items = db.prepare(`
+    ${closedTradeBaseSql(queryParts.whereClause, queryParts.havingClause)}
+    ORDER BY closedDate DESC, t.id DESC
+    LIMIT @limit OFFSET @offset
+  `).all({ ...queryParts.params, limit: filters.limit, offset: filters.offset }) as TradeRow[];
+  return {
+    items,
+    total: total.count,
+    limit: filters.limit,
+    offset: filters.offset,
+    hasMore: filters.offset + items.length < total.count
+  };
+}
+
+function buildClosedTradeQueryParts(filters: ClosedTradeFilters): { readonly whereClause: string; readonly havingClause: string; readonly params: Record<string, number | string> } {
+  const whereClauses: string[] = ["t.status = 'closed'"];
+  const havingClauses: string[] = [];
+  const params: Record<string, number | string> = {};
+  if (filters.symbol.trim()) {
+    whereClauses.push("UPPER(t.symbol) LIKE @symbol");
+    params.symbol = `%${filters.symbol.trim().toUpperCase()}%`;
+  }
+  if (filters.setupId !== null) {
+    whereClauses.push("t.setup_id = @setupId");
+    params.setupId = filters.setupId;
+  }
+  if (filters.entryMethodId !== null) {
+    whereClauses.push("t.entry_method_id = @entryMethodId");
+    params.entryMethodId = filters.entryMethodId;
+  }
+  if (filters.periodStart !== null) {
+    havingClauses.push("MAX(e.exit_date) >= @periodStart");
+    params.periodStart = filters.periodStart;
+  }
+  if (filters.periodEnd !== null) {
+    havingClauses.push("MAX(e.exit_date) <= @periodEnd");
+    params.periodEnd = filters.periodEnd;
+  }
+  if (filters.outcome === "winners") {
+    havingClauses.push("COALESCE(SUM(e.pnl), 0) > 0");
+  } else if (filters.outcome === "losers") {
+    havingClauses.push("COALESCE(SUM(e.pnl), 0) < 0");
+  } else if (filters.outcome === "breakeven") {
+    havingClauses.push("COALESCE(SUM(e.pnl), 0) = 0");
+  }
+  return {
+    whereClause: whereClauses.join(" AND "),
+    havingClause: havingClauses.length > 0 ? `HAVING ${havingClauses.join(" AND ")}` : "",
+    params
+  };
+}
+
+function closedTradeBaseSql(whereClause: string, havingClause: string): string {
+  return `
     SELECT t.id, t.symbol, t.market, t.direction, t.entry_date AS entryDate, t.entry_price AS entryPrice,
-      t.quantity, t.stop_loss AS stopLoss, t.risk_percentage AS riskPercentage,
+      t.quantity, t.stop_loss AS stopLoss, t.active_stop_loss AS activeStopLoss, t.risk_percentage AS riskPercentage,
+      t.current_price AS currentPrice, t.current_price_updated_at AS currentPriceUpdatedAt,
       t.risk_capital_base AS riskCapitalBase, t.planned_risk_amount AS plannedRiskAmount,
       ROUND(t.entry_price * t.quantity, 2) AS positionValue,
       CASE WHEN t.risk_capital_base > 0 THEN ROUND(((t.entry_price * t.quantity) / t.risk_capital_base) * 100, 2) ELSE 0 END AS positionSizePercentage,
       ROUND((t.entry_price - t.stop_loss) * t.quantity, 2) AS actualRisk,
       CASE WHEN t.planned_risk_amount > 0 THEN ROUND((((t.entry_price - t.stop_loss) * t.quantity) / t.planned_risk_amount) * 100, 2) ELSE 0 END AS riskUsedPercentage,
-      t.setup_id AS setupId, s.name AS setupName,
+      ${unrealizedMetricSelectSql()},
+      t.setup_id AS setupId, s.name AS setupName, t.entry_method_id AS entryMethodId, em.name AS entryMethodName,
+      t.entry_reason AS entryReason, t.emotional_state AS emotionalState, t.confidence,
+      t.notes, t.status, t.created_at AS createdAt, MAX(e.exit_date) AS closedDate
+    FROM trades t
+    JOIN trade_exits e ON e.trade_id = t.id
+    LEFT JOIN setups s ON s.id = t.setup_id
+    LEFT JOIN entry_methods em ON em.id = t.entry_method_id
+    LEFT JOIN (
+      SELECT trade_id, SUM(quantity) AS exited_quantity
+      FROM trade_exits
+      GROUP BY trade_id
+    ) x ON x.trade_id = t.id
+    WHERE ${whereClause}
+    GROUP BY t.id
+    ${havingClause}
+  `;
+}
+
+export function getTrade(db: Database.Database, tradeId: number): TradeRow | undefined {
+  return db.prepare(`
+    SELECT t.id, t.symbol, t.market, t.direction, t.entry_date AS entryDate, t.entry_price AS entryPrice,
+      t.quantity, t.stop_loss AS stopLoss, t.active_stop_loss AS activeStopLoss, t.risk_percentage AS riskPercentage,
+      t.current_price AS currentPrice, t.current_price_updated_at AS currentPriceUpdatedAt,
+      t.risk_capital_base AS riskCapitalBase, t.planned_risk_amount AS plannedRiskAmount,
+      ROUND(t.entry_price * t.quantity, 2) AS positionValue,
+      CASE WHEN t.risk_capital_base > 0 THEN ROUND(((t.entry_price * t.quantity) / t.risk_capital_base) * 100, 2) ELSE 0 END AS positionSizePercentage,
+      ROUND((t.entry_price - t.stop_loss) * t.quantity, 2) AS actualRisk,
+      CASE WHEN t.planned_risk_amount > 0 THEN ROUND((((t.entry_price - t.stop_loss) * t.quantity) / t.planned_risk_amount) * 100, 2) ELSE 0 END AS riskUsedPercentage,
+      ${unrealizedMetricSelectSql()},
+      t.setup_id AS setupId, s.name AS setupName, t.entry_method_id AS entryMethodId, em.name AS entryMethodName,
       t.entry_reason AS entryReason, t.emotional_state AS emotionalState, t.confidence,
       t.notes, t.status, t.created_at AS createdAt
     FROM trades t
     LEFT JOIN setups s ON s.id = t.setup_id
+    LEFT JOIN entry_methods em ON em.id = t.entry_method_id
+    LEFT JOIN (
+      SELECT trade_id, SUM(quantity) AS exited_quantity
+      FROM trade_exits
+      GROUP BY trade_id
+    ) x ON x.trade_id = t.id
     WHERE t.id = ?
   `).get(tradeId) as TradeRow | undefined;
 }
@@ -273,6 +414,77 @@ export function updateExit(db: Database.Database, params: {
     updateTradeStatus(db, trade);
   });
   transaction();
+}
+
+export function updateActiveStopLoss(db: Database.Database, params: {
+  readonly tradeId: number;
+  readonly activeStopLoss: number;
+}): void {
+  if (params.activeStopLoss <= 0) {
+    throw new Error("Active stop must be positive");
+  }
+  const trade: TradeRow = getRequiredTrade(db, params.tradeId);
+  if (trade.status === "closed") {
+    throw new Error("Active stop can only be updated for open trades");
+  }
+  const result = db.prepare("UPDATE trades SET active_stop_loss = ? WHERE id = ?").run(params.activeStopLoss, params.tradeId);
+  if (result.changes === 0) {
+    throw new Error("Trade not found");
+  }
+}
+
+export function updateCurrentPrice(db: Database.Database, params: {
+  readonly tradeId: number;
+  readonly currentPrice: number;
+}): void {
+  if (params.currentPrice <= 0) {
+    throw new Error("Current price must be positive");
+  }
+  const trade: TradeRow = getRequiredTrade(db, params.tradeId);
+  if (trade.status === "closed") {
+    throw new Error("Current price can only be updated for open trades");
+  }
+  db.prepare("UPDATE trades SET current_price = ?, current_price_updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(params.currentPrice, params.tradeId);
+}
+
+function getActiveStopLossValue(activeStopLoss: number | undefined, fallback: number): number {
+  const value: number = activeStopLoss ?? fallback;
+  if (value <= 0) {
+    throw new Error("Active stop must be positive");
+  }
+  return value;
+}
+
+function updateCurrentPriceFromTradeInput(db: Database.Database, params: {
+  readonly tradeId: number;
+  readonly currentPrice: number | null | undefined;
+  readonly status: TradeRow["status"];
+}): void {
+  if (params.currentPrice === undefined) {
+    return;
+  }
+  if (params.status === "closed") {
+    throw new Error("Current price can only be updated for open trades");
+  }
+  if (params.currentPrice === null) {
+    db.prepare("UPDATE trades SET current_price = NULL, current_price_updated_at = NULL WHERE id = ?").run(params.tradeId);
+    return;
+  }
+  if (params.currentPrice <= 0) {
+    throw new Error("Current price must be positive");
+  }
+  db.prepare("UPDATE trades SET current_price = ?, current_price_updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(params.currentPrice, params.tradeId);
+}
+
+function unrealizedMetricSelectSql(): string {
+  const remainingQuantity = "(t.quantity - COALESCE(x.exited_quantity, 0))";
+  const unrealizedPnl = `((t.current_price - t.entry_price) * ${remainingQuantity})`;
+  const tradeRisk = "((t.entry_price - t.stop_loss) * t.quantity)";
+  return `
+      CASE WHEN t.current_price IS NOT NULL AND t.status != 'closed' THEN ROUND(${unrealizedPnl}, 2) ELSE 0 END AS unrealizedPnl,
+      CASE WHEN t.current_price IS NOT NULL AND t.status != 'closed' AND ${tradeRisk} > 0 THEN ROUND(${unrealizedPnl} / ${tradeRisk}, 2) ELSE 0 END AS unrealizedR,
+      CASE WHEN t.current_price IS NOT NULL AND t.status != 'closed' AND t.risk_capital_base > 0 THEN ROUND((${unrealizedPnl} / t.risk_capital_base) * 100, 2) ELSE 0 END AS unrealizedPortfolioImpactPercentage
+  `;
 }
 
 export function backfillExitRMultiples(db: Database.Database): void {

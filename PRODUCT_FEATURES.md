@@ -279,6 +279,7 @@ Implemented:
 
 Future scope:
 
+- Multi-select screenshot upload for adding several timeframe screenshots in one action.
 - Screenshot zoom/pan.
 - Screenshot annotations.
 - Screenshot replacement without deleting trade/exit.

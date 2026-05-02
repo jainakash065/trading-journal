@@ -14,6 +14,7 @@ export function initializeDatabase(db: Database.Database): void {
   db.pragma("foreign_keys = ON");
   migrate(db);
   seed(db);
+  ensureCapitalHistoryStartDate(db);
   backfillExitRMultiples(db);
 }
 
@@ -168,4 +169,26 @@ function seed(db: Database.Database): void {
   ["Chased entry", "Exited early", "Moved stop", "Oversized", "Ignored market"].forEach((label: string) => {
     db.prepare("INSERT OR IGNORE INTO mistake_tags (label) VALUES (?)").run(label);
   });
+}
+
+function ensureCapitalHistoryStartDate(db: Database.Database): void {
+  const existing = db.prepare("SELECT value FROM settings WHERE key = 'capitalHistoryStartDate'").get() as { readonly value: string } | undefined;
+  if (existing?.value) {
+    return;
+  }
+  const inferredStartDate: string = inferCapitalHistoryStartDate(db);
+  db.prepare("INSERT INTO settings (key, value) VALUES ('capitalHistoryStartDate', ?)").run(inferredStartDate);
+}
+
+function inferCapitalHistoryStartDate(db: Database.Database): string {
+  const row = db.prepare(`
+    SELECT MIN(date_value) AS startDate
+    FROM (
+      SELECT MIN(entry_date) AS date_value FROM trades
+      UNION ALL
+      SELECT MIN(entry_date) AS date_value FROM capital_ledger
+    )
+    WHERE date_value IS NOT NULL
+  `).get() as { readonly startDate: string | null };
+  return row.startDate ?? new Date().toISOString().slice(0, 10);
 }

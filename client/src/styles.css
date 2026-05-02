@@ -105,6 +105,16 @@ nav {
   margin: 0;
 }
 
+.info-note {
+  background: #f1eee7;
+  border: 1px solid #e2ddd2;
+  border-radius: 8px;
+  color: #56616a;
+  font-size: 14px;
+  margin: 0;
+  padding: 10px 12px;
+}
+
 .metric-grid {
   display: grid;
   gap: 14px;

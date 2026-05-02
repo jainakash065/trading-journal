@@ -21,15 +21,25 @@ type DashboardPeriod = {
   readonly endDate: string;
 };
 
+type PeriodCapital = {
+  readonly available: boolean;
+  readonly startingCapital: number | null;
+  readonly endingCapital: number | null;
+  readonly change: number | null;
+  readonly changePercentage: number | null;
+};
+
 export type Dashboard = {
   readonly period: DashboardPeriod;
+  readonly capitalHistoryStartDate: string;
   readonly startingCapital: number;
   readonly currentCapital: number;
   readonly totalRealizedPnl: number;
-  readonly periodStartingCapital: number;
-  readonly periodEndingCapital: number;
-  readonly periodCapitalChange: number;
-  readonly periodCapitalChangePercentage: number;
+  readonly periodCapitalAvailable: boolean;
+  readonly periodStartingCapital: number | null;
+  readonly periodEndingCapital: number | null;
+  readonly periodCapitalChange: number | null;
+  readonly periodCapitalChangePercentage: number | null;
   readonly periodPnl: number;
   readonly periodClosedTrades: number;
   readonly winRate: number;
@@ -53,6 +63,7 @@ export function buildDashboard(db: Database.Database, periodKey: DashboardPeriod
   const settings: Record<string, string> = getSettings(db);
   const startingCapital: number = Number(settings.startingCapital ?? 0);
   const todayText: string = formatDate(today);
+  const capitalHistoryStartDate: string = settings.capitalHistoryStartDate ?? todayText;
   const period: DashboardPeriod = getDashboardPeriod(periodKey, today);
   const closedTrades: readonly ClosedTradeMetric[] = listClosedTradeMetrics(db);
   const periodTrades: readonly ClosedTradeMetric[] = filterTradesByPeriod(closedTrades, period);
@@ -65,18 +76,18 @@ export function buildDashboard(db: Database.Database, periodKey: DashboardPeriod
   const grossProfit: number = winners.reduce((total: number, trade: ClosedTradeMetric) => total + trade.realizedPnl, 0);
   const grossLoss: number = Math.abs(losers.reduce((total: number, trade: ClosedTradeMetric) => total + trade.realizedPnl, 0));
   const currentCapital: number = getCurrentCapital(db);
-  const periodStartingCapital: number = getPeriodStartingCapital({ db, period, startingCapital });
-  const periodEndingCapital: number = getPeriodEndingCapital({ db, period, startingCapital, currentCapital, todayText });
-  const periodCapitalChange: number = round(periodEndingCapital - periodStartingCapital);
+  const periodCapital: PeriodCapital = getPeriodCapital({ db, period, startingCapital, todayText, capitalHistoryStartDate });
   return {
     period,
+    capitalHistoryStartDate,
     startingCapital,
     currentCapital,
     totalRealizedPnl,
-    periodStartingCapital,
-    periodEndingCapital,
-    periodCapitalChange,
-    periodCapitalChangePercentage: periodStartingCapital > 0 ? round((periodCapitalChange / periodStartingCapital) * 100) : 0,
+    periodCapitalAvailable: periodCapital.available,
+    periodStartingCapital: periodCapital.startingCapital,
+    periodEndingCapital: periodCapital.endingCapital,
+    periodCapitalChange: periodCapital.change,
+    periodCapitalChangePercentage: periodCapital.changePercentage,
     periodPnl: round(periodTrades.reduce((total: number, trade: ClosedTradeMetric) => total + trade.realizedPnl, 0)),
     periodClosedTrades: periodTrades.length,
     winRate,
@@ -85,7 +96,7 @@ export function buildDashboard(db: Database.Database, periodKey: DashboardPeriod
     profitFactor: grossLoss > 0 ? round(grossProfit / grossLoss) : round(grossProfit),
     averageR: average(periodTrades.map((trade: ClosedTradeMetric) => trade.finalR)),
     expectancy: average(periodTrades.map((trade: ClosedTradeMetric) => trade.realizedPnl)),
-    maxDrawdown: calculateMaxDrawdown({ startingCapital: periodStartingCapital, trades: periodTrades }),
+    maxDrawdown: calculateMaxDrawdown({ startingCapital: periodCapital.startingCapital ?? startingCapital, trades: periodTrades }),
     openTrades: getCount(db, "SELECT COUNT(*) AS count FROM trades WHERE status != 'closed'"),
     openRiskExposure: getOpenRiskExposure(db),
     bestSetup: getSetupByPnl(periodTrades, "best"),
@@ -254,31 +265,62 @@ function getMistakeFrequency(db: Database.Database, period: DashboardPeriod): re
   `).all(...values) as { readonly label: string; readonly count: number }[];
 }
 
-function getPeriodStartingCapital(params: {
+function getPeriodCapital(params: {
   readonly db: Database.Database;
   readonly period: DashboardPeriod;
   readonly startingCapital: number;
-}): number {
-  if (params.period.startDate === null) {
-    return params.startingCapital;
+  readonly todayText: string;
+  readonly capitalHistoryStartDate: string;
+}): PeriodCapital {
+  if (params.period.endDate < params.capitalHistoryStartDate) {
+    return { available: false, startingCapital: null, endingCapital: null, change: null, changePercentage: null };
   }
-  const row = params.db.prepare("SELECT COALESCE(SUM(amount), 0) AS total FROM capital_ledger WHERE entry_date < ?")
-    .get(params.period.startDate) as { readonly total: number };
+  const effectiveStartDate: string = getEffectiveCapitalStartDate(params.period, params.capitalHistoryStartDate);
+  const startingCapital: number = getCapitalBeforeDate({
+    db: params.db,
+    startingCapital: params.startingCapital,
+    capitalHistoryStartDate: params.capitalHistoryStartDate,
+    date: effectiveStartDate
+  });
+  const endingCapital: number = getCapitalAtPeriodEnd(params);
+  const change: number = round(endingCapital - startingCapital);
+  return {
+    available: true,
+    startingCapital,
+    endingCapital,
+    change,
+    changePercentage: startingCapital > 0 ? round((change / startingCapital) * 100) : 0
+  };
+}
+
+function getEffectiveCapitalStartDate(period: DashboardPeriod, capitalHistoryStartDate: string): string {
+  if (period.startDate === null || period.startDate < capitalHistoryStartDate) {
+    return capitalHistoryStartDate;
+  }
+  return period.startDate;
+}
+
+function getCapitalBeforeDate(params: {
+  readonly db: Database.Database;
+  readonly startingCapital: number;
+  readonly capitalHistoryStartDate: string;
+  readonly date: string;
+}): number {
+  const row = params.db.prepare("SELECT COALESCE(SUM(amount), 0) AS total FROM capital_ledger WHERE entry_date >= ? AND entry_date < ?")
+    .get(params.capitalHistoryStartDate, params.date) as { readonly total: number };
   return round(params.startingCapital + row.total);
 }
 
-function getPeriodEndingCapital(params: {
+function getCapitalAtPeriodEnd(params: {
   readonly db: Database.Database;
   readonly period: DashboardPeriod;
   readonly startingCapital: number;
-  readonly currentCapital: number;
   readonly todayText: string;
+  readonly capitalHistoryStartDate: string;
 }): number {
-  if (params.period.endDate >= params.todayText) {
-    return params.currentCapital;
-  }
-  const row = params.db.prepare("SELECT COALESCE(SUM(amount), 0) AS total FROM capital_ledger WHERE entry_date <= ?")
-    .get(params.period.endDate) as { readonly total: number };
+  const endDate: string = params.period.endDate >= params.todayText ? params.todayText : params.period.endDate;
+  const row = params.db.prepare("SELECT COALESCE(SUM(amount), 0) AS total FROM capital_ledger WHERE entry_date >= ? AND entry_date <= ?")
+    .get(params.capitalHistoryStartDate, endDate) as { readonly total: number };
   return round(params.startingCapital + row.total);
 }
 

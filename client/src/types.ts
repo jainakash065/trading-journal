@@ -7,6 +7,7 @@ export type ReferenceItem = {
 
 export type Settings = {
   readonly startingCapital: string;
+  readonly capitalHistoryStartDate: string;
   readonly defaultMarket: string;
   readonly defaultDirection: string;
   readonly defaultRiskPercentage: string;
@@ -73,13 +74,15 @@ export type DashboardPeriod = {
 
 export type Dashboard = {
   readonly period: DashboardPeriod;
+  readonly capitalHistoryStartDate: string;
   readonly startingCapital: number;
   readonly currentCapital: number;
   readonly totalRealizedPnl: number;
-  readonly periodStartingCapital: number;
-  readonly periodEndingCapital: number;
-  readonly periodCapitalChange: number;
-  readonly periodCapitalChangePercentage: number;
+  readonly periodCapitalAvailable: boolean;
+  readonly periodStartingCapital: number | null;
+  readonly periodEndingCapital: number | null;
+  readonly periodCapitalChange: number | null;
+  readonly periodCapitalChangePercentage: number | null;
   readonly periodPnl: number;
   readonly periodClosedTrades: number;
   readonly winRate: number;

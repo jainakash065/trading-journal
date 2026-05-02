@@ -190,7 +190,7 @@ function DashboardView(props: {
         <div>
           <p className="eyebrow">Performance</p>
           <h2>Dashboard</h2>
-          <p className="period-range">{formatPeriodRange(d.period.startDate, d.period.endDate)}</p>
+          <p className="period-range">{formatPeriodRange(d.period.startDate ?? d.capitalHistoryStartDate, d.period.endDate)}</p>
         </div>
         <label className="period-selector">
           <span>Period</span>
@@ -209,13 +209,16 @@ function DashboardView(props: {
       </section>
       <section className="dashboard-section">
         <h3>Period Capital</h3>
+        {!d.periodCapitalAvailable ? (
+          <p className="info-note">No capital history for this period. Capital tracking starts on {formatDisplayDate(d.capitalHistoryStartDate)}.</p>
+        ) : null}
         <div className="metric-grid snapshot-grid">
-          <Metric label="Starting capital" value={money(d.periodStartingCapital)} />
-          <Metric label="Ending capital" value={money(d.periodEndingCapital)} />
+          <Metric label="Starting capital" value={formatOptionalMoney(d.periodStartingCapital)} />
+          <Metric label="Ending capital" value={formatOptionalMoney(d.periodEndingCapital)} />
           <Metric
             label="Capital change"
-            tone={d.periodCapitalChange >= 0 ? "good" : "bad"}
-            value={`${money(d.periodCapitalChange)} · ${formatSignedPercent(d.periodCapitalChangePercentage)}`}
+            tone={getNullableTone(d.periodCapitalChange)}
+            value={formatCapitalChange(d.periodCapitalChange, d.periodCapitalChangePercentage)}
           />
         </div>
       </section>
@@ -745,7 +748,11 @@ function TradeDetail(props: { readonly tradeId: number; readonly referenceData: 
 }
 
 function SettingsView(props: { readonly data: AppData; readonly onSaved: () => Promise<void> }): JSX.Element {
-  const [settings, setSettings] = useState({ startingCapital: props.data.settings.startingCapital, defaultRiskPercentage: props.data.settings.defaultRiskPercentage });
+  const [settings, setSettings] = useState({
+    startingCapital: props.data.settings.startingCapital,
+    capitalHistoryStartDate: props.data.settings.capitalHistoryStartDate,
+    defaultRiskPercentage: props.data.settings.defaultRiskPercentage
+  });
   const [newSetup, setNewSetup] = useState("");
   const [newChecklist, setNewChecklist] = useState("");
   const [newMistake, setNewMistake] = useState("");
@@ -766,6 +773,7 @@ function SettingsView(props: { readonly data: AppData; readonly onSaved: () => P
       <section className="panel">
         <div className="form-grid">
           <Input label="Starting capital" type="number" value={settings.startingCapital} onChange={(value) => setSettings({ ...settings, startingCapital: value })} />
+          <Input label="Capital history start date" type="date" value={settings.capitalHistoryStartDate} onChange={(value) => setSettings({ ...settings, capitalHistoryStartDate: value })} />
           <Input label="Default risk %" type="number" value={settings.defaultRiskPercentage} onChange={(value) => setSettings({ ...settings, defaultRiskPercentage: value })} />
           <button className="primary" type="button" onClick={saveSettings}>Save Settings</button>
         </div>
@@ -845,6 +853,24 @@ function ImagePreviewModal(props: { readonly screenshot: ScreenshotPreview; read
 
 function money(value: number): string {
   return new Intl.NumberFormat("en-IN", { currency: "INR", maximumFractionDigits: 0, style: "currency" }).format(value);
+}
+
+function formatOptionalMoney(value: number | null): string {
+  return value === null ? "-" : money(value);
+}
+
+function formatCapitalChange(change: number | null, changePercentage: number | null): string {
+  if (change === null || changePercentage === null) {
+    return "-";
+  }
+  return `${money(change)} · ${formatSignedPercent(changePercentage)}`;
+}
+
+function getNullableTone(value: number | null): "good" | "bad" | undefined {
+  if (value === null) {
+    return undefined;
+  }
+  return value >= 0 ? "good" : "bad";
 }
 
 function formatPercent(value: number): string {

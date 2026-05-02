@@ -87,6 +87,12 @@ export type RDistributionBucket = {
   readonly count: number;
 };
 
+export type CapitalCurvePoint = {
+  readonly date: string;
+  readonly capital: number;
+  readonly dailyPnl: number;
+};
+
 export type LastNTradesAnalytics = {
   readonly selectedN: LastNTradeCount;
   readonly actualCount: number;
@@ -144,6 +150,6 @@ export type Dashboard = {
   readonly ruleFollowedPnl: number;
   readonly ruleBrokenPnl: number;
   readonly mistakeFrequency: readonly { readonly label: string; readonly count: number }[];
-  readonly capitalCurve: readonly { readonly date: string; readonly capital: number }[];
+  readonly capitalCurve: readonly CapitalCurvePoint[];
   readonly lastNTrades: LastNTradesAnalytics;
 };

@@ -16,6 +16,7 @@ describe("dashboard period metrics", () => {
     expect(dashboard.periodEndingCapital).toBeNull();
     expect(dashboard.periodCapitalChange).toBeNull();
     expect(dashboard.periodCapitalChangePercentage).toBeNull();
+    expect(dashboard.capitalCurve).toEqual([]);
   });
 
   it("defaults current month to zero when no trades closed in the current month", () => {
@@ -35,6 +36,10 @@ describe("dashboard period metrics", () => {
     expect(dashboard.periodCapitalAvailable).toBe(true);
     expect(dashboard.periodStartingCapital).toBe(566556.4);
     expect(dashboard.periodEndingCapital).toBe(566556.4);
+    expect(dashboard.capitalCurve).toEqual([
+      { date: "2026-05-01", capital: 566556.4, dailyPnl: 0 },
+      { date: "2026-05-02", capital: 566556.4, dailyPnl: 0 }
+    ]);
   });
 
   it("includes April closed trades in last month and current FY", () => {
@@ -51,6 +56,13 @@ describe("dashboard period metrics", () => {
     expect(lastMonth.periodClosedTradePnl).toBe(16556.4);
     expect(lastMonth.periodOpenRealizedPnl).toBe(0);
     expect(lastMonth.maxDrawdown).toBe(0);
+    expect(lastMonth.capitalCurve).toEqual([
+      { date: "2026-04-01", capital: 550000, dailyPnl: 0 },
+      { date: "2026-04-09", capital: 553167.4, dailyPnl: 3167.4 },
+      { date: "2026-04-15", capital: 558186.9, dailyPnl: 5019.5 },
+      { date: "2026-04-23", capital: 566556.4, dailyPnl: 8369.5 },
+      { date: "2026-04-30", capital: 566556.4, dailyPnl: 0 }
+    ]);
     expectPeriodPnl(currentFy, "current_fy", 16556.4);
     expect(currentFy.period.startDate).toBe("2026-04-01");
     expect(currentFy.period.endDate).toBe("2027-03-31");
@@ -68,6 +80,8 @@ describe("dashboard period metrics", () => {
     expect(dashboard.periodBookedPnl).toBe(16556.4);
     expect(dashboard.periodClosedTradePnl).toBe(16556.4);
     expect(dashboard.periodOpenRealizedPnl).toBe(0);
+    expect(dashboard.capitalCurve[0]).toEqual({ date: "2026-04-01", capital: 550000, dailyPnl: 0 });
+    expect(dashboard.capitalCurve[dashboard.capitalCurve.length - 1]).toEqual({ date: "2026-05-02", capital: 566556.4, dailyPnl: 0 });
   });
 
   it("separates booked pnl from closed trade pnl when a trade is partially exited", () => {
@@ -83,6 +97,27 @@ describe("dashboard period metrics", () => {
     expect(dashboard.periodPnl).toBe(dashboard.periodClosedTradePnl);
     expect(dashboard.periodClosedTrades).toBe(1);
     expect(dashboard.openRiskExposure).toBe(825.3);
+    expect(dashboard.capitalCurve).toEqual([
+      { date: "2026-04-01", capital: 550000, dailyPnl: 0 },
+      { date: "2026-04-09", capital: 553167.4, dailyPnl: 3167.4 },
+      { date: "2026-04-10", capital: 556485.4, dailyPnl: 3318 },
+      { date: "2026-04-13", capital: 562617.4, dailyPnl: 6132 },
+      { date: "2026-04-15", capital: 567636.9, dailyPnl: 5019.5 },
+      { date: "2026-04-23", capital: 576006.4, dailyPnl: 8369.5 },
+      { date: "2026-04-30", capital: 576006.4, dailyPnl: 0 }
+    ]);
+  });
+
+  it("groups multiple equity curve exits on the same date", () => {
+    const db: Database.Database = createDashboardDatabase();
+    createClosedTradeWithFinalR(db, { symbol: "SAME1", finalR: 1, entryDate: "2026-04-01", exitDate: "2026-04-05" });
+    createClosedTradeWithFinalR(db, { symbol: "SAME2", finalR: 1, entryDate: "2026-04-02", exitDate: "2026-04-05" });
+    const dashboard: Dashboard = buildDashboard(db, "last_month", dashboardToday);
+    expect(dashboard.capitalCurve).toEqual([
+      { date: "2026-04-01", capital: 550000, dailyPnl: 0 },
+      { date: "2026-04-05", capital: 550200, dailyPnl: 200 },
+      { date: "2026-04-30", capital: 550200, dailyPnl: 0 }
+    ]);
   });
 
   it("uses active stop loss for current open risk without changing original stop loss", () => {

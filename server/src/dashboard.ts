@@ -21,6 +21,12 @@ type RealizedExitMetric = {
   readonly exitDate: string;
 };
 
+type CapitalCurvePoint = {
+  readonly date: string;
+  readonly capital: number;
+  readonly dailyPnl: number;
+};
+
 export type DashboardPeriodKey = "all_time" | "current_fy" | "last_fy" | "this_month" | "last_month" | "this_week";
 export type LastNTradeCount = 10 | 20 | 50;
 
@@ -115,7 +121,7 @@ export type Dashboard = {
   readonly ruleFollowedPnl: number;
   readonly ruleBrokenPnl: number;
   readonly mistakeFrequency: readonly { readonly label: string; readonly count: number }[];
-  readonly capitalCurve: readonly { readonly date: string; readonly capital: number }[];
+  readonly capitalCurve: readonly CapitalCurvePoint[];
   readonly lastNTrades: LastNTradesAnalytics;
 };
 
@@ -183,7 +189,13 @@ export function buildDashboard(db: Database.Database, periodKey: DashboardPeriod
     ruleFollowedPnl: round(periodTrades.filter((trade: ClosedTradeMetric) => trade.followedPlan === 1).reduce((total: number, trade: ClosedTradeMetric) => total + trade.realizedPnl, 0)),
     ruleBrokenPnl: round(periodTrades.filter((trade: ClosedTradeMetric) => trade.followedPlan === 0).reduce((total: number, trade: ClosedTradeMetric) => total + trade.realizedPnl, 0)),
     mistakeFrequency: getMistakeFrequency(db, period),
-    capitalCurve: buildCapitalCurve({ db, startingCapital }),
+    capitalCurve: buildCapitalCurve({
+      db,
+      period,
+      periodCapital,
+      capitalHistoryStartDate,
+      todayText
+    }),
     lastNTrades
   };
 }
@@ -582,13 +594,33 @@ function getCapitalAtPeriodEnd(params: {
   return round(params.startingCapital + row.total);
 }
 
-function buildCapitalCurve(params: { readonly db: Database.Database; readonly startingCapital: number }): readonly { readonly date: string; readonly capital: number }[] {
-  const rows = params.db.prepare("SELECT entry_date AS date, amount FROM capital_ledger ORDER BY entry_date ASC, id ASC").all() as { date: string; amount: number }[];
-  let capital: number = params.startingCapital;
-  const curve: { date: string; capital: number }[] = [{ date: "Start", capital }];
-  rows.forEach((row: { date: string; amount: number }) => {
-    capital = round(capital + row.amount);
-    curve.push({ date: row.date, capital });
+function buildCapitalCurve(params: {
+  readonly db: Database.Database;
+  readonly period: DashboardPeriod;
+  readonly periodCapital: PeriodCapital;
+  readonly capitalHistoryStartDate: string;
+  readonly todayText: string;
+}): readonly CapitalCurvePoint[] {
+  if (!params.periodCapital.available || params.periodCapital.startingCapital === null || params.periodCapital.endingCapital === null) {
+    return [];
+  }
+  const startDate: string = getEffectiveCapitalStartDate(params.period, params.capitalHistoryStartDate);
+  const endDate: string = params.period.endDate >= params.todayText ? params.todayText : params.period.endDate;
+  const rows = params.db.prepare(`
+    SELECT entry_date AS date, ROUND(SUM(amount), 2) AS dailyPnl
+    FROM capital_ledger
+    WHERE type = 'realized_pnl' AND entry_date >= ? AND entry_date <= ?
+    GROUP BY entry_date
+    ORDER BY entry_date ASC
+  `).all(startDate, endDate) as { readonly date: string; readonly dailyPnl: number }[];
+  let capital: number = params.periodCapital.startingCapital;
+  const curve: CapitalCurvePoint[] = [{ date: startDate, capital, dailyPnl: 0 }];
+  rows.forEach((row: { readonly date: string; readonly dailyPnl: number }) => {
+    capital = round(capital + row.dailyPnl);
+    curve.push({ date: row.date, capital, dailyPnl: round(row.dailyPnl) });
   });
+  if (curve.length === 1 || curve[curve.length - 1].date !== endDate) {
+    curve.push({ date: endDate, capital: params.periodCapital.endingCapital, dailyPnl: 0 });
+  }
   return curve;
 }

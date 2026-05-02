@@ -1,7 +1,7 @@
 import { Activity, BarChart3, BookOpen, ClipboardCheck, IndianRupee, Pencil, Plus, Settings as SettingsIcon, Trash2, X } from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
 import { apiDelete, apiGet, apiSend, endpoints, type AppData, type ReferenceData, uploadScreenshot } from "./api";
-import type { Dashboard, DashboardPeriodKey, LastNTradeCount, RDistributionBucket, Settings, Trade, TradeExit } from "./types";
+import type { CapitalCurvePoint, Dashboard, DashboardPeriodKey, LastNTradeCount, RDistributionBucket, Settings, Trade, TradeExit } from "./types";
 
 type View = "dashboard" | "new" | "open" | "closed" | "settings";
 
@@ -243,6 +243,10 @@ function DashboardView(props: {
         </div>
       </section>
       <section className="dashboard-section">
+        <h3>Equity Curve</h3>
+        <EquityCurvePanel dashboard={d} />
+      </section>
+      <section className="dashboard-section">
         <h3>Period Performance</h3>
         <div className="metric-grid">
           <Metric label="Booked P&L" value={money(d.periodBookedPnl)} tone={getNumberTone(d.periodBookedPnl)} />
@@ -344,6 +348,50 @@ function RDistributionPanel(props: { readonly buckets: readonly RDistributionBuc
         ))}
       </div>
     </section>
+  );
+}
+
+function EquityCurvePanel(props: { readonly dashboard: Dashboard }): JSX.Element {
+  const d = props.dashboard;
+  if (!d.periodCapitalAvailable || d.capitalCurve.length === 0 || d.periodStartingCapital === null || d.periodEndingCapital === null) {
+    return <section className="panel"><p className="muted">No capital history for this period.</p></section>;
+  }
+  const lineTone: string = d.periodEndingCapital >= d.periodStartingCapital ? "good" : "bad";
+  return (
+    <section className="panel equity-panel">
+      <div className="equity-summary">
+        <Metric label="Starting capital" value={money(d.periodStartingCapital)} />
+        <Metric label="Ending capital" value={money(d.periodEndingCapital)} />
+        <Metric label="Change" value={formatCapitalChange(d.periodCapitalChange, d.periodCapitalChangePercentage)} tone={getNullableTone(d.periodCapitalChange)} />
+        <Metric label="Max drawdown" value={money(d.maxDrawdown)} tone="bad" />
+      </div>
+      <EquityCurveSvg baseline={d.periodStartingCapital} points={d.capitalCurve} tone={lineTone} />
+    </section>
+  );
+}
+
+function EquityCurveSvg(props: { readonly baseline: number; readonly points: readonly CapitalCurvePoint[]; readonly tone: string }): JSX.Element {
+  const dimensions = { width: 720, height: 240, paddingX: 34, paddingY: 22 };
+  const capitals: readonly number[] = props.points.map((point: CapitalCurvePoint) => point.capital);
+  const minCapital: number = Math.min(props.baseline, ...capitals);
+  const maxCapital: number = Math.max(props.baseline, ...capitals);
+  const range: number = Math.max(maxCapital - minCapital, 1);
+  const xForIndex = (index: number): number => dimensions.paddingX + (index / Math.max(props.points.length - 1, 1)) * (dimensions.width - dimensions.paddingX * 2);
+  const yForCapital = (capital: number): number => dimensions.height - dimensions.paddingY - ((capital - minCapital) / range) * (dimensions.height - dimensions.paddingY * 2);
+  const path: string = props.points.map((point: CapitalCurvePoint, index: number) => `${index === 0 ? "M" : "L"} ${xForIndex(index).toFixed(2)} ${yForCapital(point.capital).toFixed(2)}`).join(" ");
+  const baselineY: number = yForCapital(props.baseline);
+  return (
+    <svg aria-label="Realized equity curve" className="equity-chart" role="img" viewBox={`0 0 ${dimensions.width} ${dimensions.height}`}>
+      <line className="equity-baseline" x1={dimensions.paddingX} x2={dimensions.width - dimensions.paddingX} y1={baselineY} y2={baselineY} />
+      <path className={`equity-line ${props.tone}`} d={path} />
+      {props.points.map((point: CapitalCurvePoint, index: number) => (
+        <circle className="equity-point" cx={xForIndex(index)} cy={yForCapital(point.capital)} key={`${point.date}-${index}`} r="4">
+          <title>{point.date} · Capital {money(point.capital)} · Booked P&L {money(point.dailyPnl)}</title>
+        </circle>
+      ))}
+      <text className="equity-axis-label" x={dimensions.paddingX} y={dimensions.height - 4}>{props.points[0]?.date}</text>
+      <text className="equity-axis-label" textAnchor="end" x={dimensions.width - dimensions.paddingX} y={dimensions.height - 4}>{props.points[props.points.length - 1]?.date}</text>
+    </svg>
   );
 }
 

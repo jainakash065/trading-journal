@@ -152,6 +152,60 @@ nav {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.equity-panel {
+  display: grid;
+  gap: 18px;
+}
+
+.equity-summary {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.equity-chart {
+  background: #fbfaf7;
+  border: 1px solid #ece7dd;
+  border-radius: 8px;
+  display: block;
+  height: auto;
+  min-height: 240px;
+  width: 100%;
+}
+
+.equity-baseline {
+  stroke: #d7a84f;
+  stroke-dasharray: 6 6;
+  stroke-width: 2;
+}
+
+.equity-line {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 4;
+}
+
+.equity-line.good {
+  stroke: #16803c;
+}
+
+.equity-line.bad {
+  stroke: #bb3e2d;
+}
+
+.equity-point {
+  fill: #ffffff;
+  stroke: #122620;
+  stroke-width: 2;
+}
+
+.equity-axis-label {
+  fill: #69757f;
+  font-size: 12px;
+  font-weight: 700;
+}
+
 .metric {
   background: #ffffff;
   border: 1px solid #e2ddd2;
@@ -759,7 +813,7 @@ small {
   .analytics-with-distribution {
     grid-template-columns: 1fr;
   }
-  .metric-grid, .snapshot-grid, .form-grid, .table-head, .table-row {
+  .metric-grid, .snapshot-grid, .equity-summary, .form-grid, .table-head, .table-row {
     grid-template-columns: 1fr;
   }
 }

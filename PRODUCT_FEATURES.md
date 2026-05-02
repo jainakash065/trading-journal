@@ -553,6 +553,36 @@ Implemented columns:
 
 ### Closed Trades
 
+Behavior:
+
+- Searchable and filterable trade-history view.
+- Defaults to the latest 50 closed trades.
+- Older closed trades are appended with `Load more`.
+- Closed trades are sorted newest first by final exit date, then trade id.
+
+Implemented filters:
+
+- Symbol partial search.
+- Period presets:
+  - All time.
+  - Current FY.
+  - Last FY.
+  - This month.
+  - Last month.
+  - This week.
+- Setup.
+- Entry method.
+- Outcome:
+  - All outcomes.
+  - Winners.
+  - Losers.
+  - Breakeven.
+
+Filtering behavior:
+
+- Period filters use final exit date, not entry date.
+- Outcome filters use final realized trade P&L.
+
 Implemented columns:
 
 - Symbol.
@@ -690,7 +720,6 @@ Recently left out of current scope:
 - Brokerage, charges, and tax-adjusted net P&L calculations.
 - Full backup/export/import workflow.
 - CSV export.
-- Advanced filters for trade tables.
 - Monthly review page.
 - Weekly review page.
 - Calendar view.

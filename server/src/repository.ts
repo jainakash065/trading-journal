@@ -47,6 +47,27 @@ type ExitInput = {
   readonly notes: string;
 };
 
+export type ClosedTradeOutcome = "all" | "winners" | "losers" | "breakeven";
+
+export type ClosedTradeFilters = {
+  readonly limit: number;
+  readonly offset: number;
+  readonly symbol: string;
+  readonly setupId: number | null;
+  readonly entryMethodId: number | null;
+  readonly outcome: ClosedTradeOutcome;
+  readonly periodStart: string | null;
+  readonly periodEnd: string | null;
+};
+
+export type PagedTradeRows = {
+  readonly items: readonly TradeRow[];
+  readonly total: number;
+  readonly limit: number;
+  readonly offset: number;
+  readonly hasMore: boolean;
+};
+
 export function getSettings(db: Database.Database): Record<string, string> {
   const rows: readonly { key: string; value: string }[] = db.prepare("SELECT key, value FROM settings").all() as { key: string; value: string }[];
   return Object.fromEntries(rows.map((row: { key: string; value: string }) => [row.key, row.value]));
@@ -202,6 +223,95 @@ export function listTrades(db: Database.Database, closed: boolean): readonly Tra
     WHERE t.status ${operator} 'closed'
     ORDER BY t.entry_date DESC, t.id DESC
   `).all() as TradeRow[];
+}
+
+export function listClosedTradesPage(db: Database.Database, filters: ClosedTradeFilters): PagedTradeRows {
+  const queryParts = buildClosedTradeQueryParts(filters);
+  const total = db.prepare(`
+    SELECT COUNT(*) AS count
+    FROM (
+      ${closedTradeBaseSql(queryParts.whereClause, queryParts.havingClause)}
+    )
+  `).get(queryParts.params) as { readonly count: number };
+  const items = db.prepare(`
+    ${closedTradeBaseSql(queryParts.whereClause, queryParts.havingClause)}
+    ORDER BY closedDate DESC, t.id DESC
+    LIMIT @limit OFFSET @offset
+  `).all({ ...queryParts.params, limit: filters.limit, offset: filters.offset }) as TradeRow[];
+  return {
+    items,
+    total: total.count,
+    limit: filters.limit,
+    offset: filters.offset,
+    hasMore: filters.offset + items.length < total.count
+  };
+}
+
+function buildClosedTradeQueryParts(filters: ClosedTradeFilters): { readonly whereClause: string; readonly havingClause: string; readonly params: Record<string, number | string> } {
+  const whereClauses: string[] = ["t.status = 'closed'"];
+  const havingClauses: string[] = [];
+  const params: Record<string, number | string> = {};
+  if (filters.symbol.trim()) {
+    whereClauses.push("UPPER(t.symbol) LIKE @symbol");
+    params.symbol = `%${filters.symbol.trim().toUpperCase()}%`;
+  }
+  if (filters.setupId !== null) {
+    whereClauses.push("t.setup_id = @setupId");
+    params.setupId = filters.setupId;
+  }
+  if (filters.entryMethodId !== null) {
+    whereClauses.push("t.entry_method_id = @entryMethodId");
+    params.entryMethodId = filters.entryMethodId;
+  }
+  if (filters.periodStart !== null) {
+    havingClauses.push("MAX(e.exit_date) >= @periodStart");
+    params.periodStart = filters.periodStart;
+  }
+  if (filters.periodEnd !== null) {
+    havingClauses.push("MAX(e.exit_date) <= @periodEnd");
+    params.periodEnd = filters.periodEnd;
+  }
+  if (filters.outcome === "winners") {
+    havingClauses.push("COALESCE(SUM(e.pnl), 0) > 0");
+  } else if (filters.outcome === "losers") {
+    havingClauses.push("COALESCE(SUM(e.pnl), 0) < 0");
+  } else if (filters.outcome === "breakeven") {
+    havingClauses.push("COALESCE(SUM(e.pnl), 0) = 0");
+  }
+  return {
+    whereClause: whereClauses.join(" AND "),
+    havingClause: havingClauses.length > 0 ? `HAVING ${havingClauses.join(" AND ")}` : "",
+    params
+  };
+}
+
+function closedTradeBaseSql(whereClause: string, havingClause: string): string {
+  return `
+    SELECT t.id, t.symbol, t.market, t.direction, t.entry_date AS entryDate, t.entry_price AS entryPrice,
+      t.quantity, t.stop_loss AS stopLoss, t.active_stop_loss AS activeStopLoss, t.risk_percentage AS riskPercentage,
+      t.current_price AS currentPrice, t.current_price_updated_at AS currentPriceUpdatedAt,
+      t.risk_capital_base AS riskCapitalBase, t.planned_risk_amount AS plannedRiskAmount,
+      ROUND(t.entry_price * t.quantity, 2) AS positionValue,
+      CASE WHEN t.risk_capital_base > 0 THEN ROUND(((t.entry_price * t.quantity) / t.risk_capital_base) * 100, 2) ELSE 0 END AS positionSizePercentage,
+      ROUND((t.entry_price - t.stop_loss) * t.quantity, 2) AS actualRisk,
+      CASE WHEN t.planned_risk_amount > 0 THEN ROUND((((t.entry_price - t.stop_loss) * t.quantity) / t.planned_risk_amount) * 100, 2) ELSE 0 END AS riskUsedPercentage,
+      ${unrealizedMetricSelectSql()},
+      t.setup_id AS setupId, s.name AS setupName, t.entry_method_id AS entryMethodId, em.name AS entryMethodName,
+      t.entry_reason AS entryReason, t.emotional_state AS emotionalState, t.confidence,
+      t.notes, t.status, t.created_at AS createdAt, MAX(e.exit_date) AS closedDate
+    FROM trades t
+    JOIN trade_exits e ON e.trade_id = t.id
+    LEFT JOIN setups s ON s.id = t.setup_id
+    LEFT JOIN entry_methods em ON em.id = t.entry_method_id
+    LEFT JOIN (
+      SELECT trade_id, SUM(quantity) AS exited_quantity
+      FROM trade_exits
+      GROUP BY trade_id
+    ) x ON x.trade_id = t.id
+    WHERE ${whereClause}
+    GROUP BY t.id
+    ${havingClause}
+  `;
 }
 
 export function getTrade(db: Database.Database, tradeId: number): TradeRow | undefined {

@@ -1,7 +1,7 @@
 import { Activity, BarChart3, BookOpen, ChartNoAxesCombined, ClipboardCheck, IndianRupee, Pencil, Plus, Settings as SettingsIcon, Trash2, X } from "lucide-react";
 import { FormEvent, type PointerEvent, useEffect, useState } from "react";
-import { apiDelete, apiGet, apiSend, endpoints, type AppData, type ReferenceData, uploadScreenshot } from "./api";
-import type { CapitalCurvePoint, Dashboard, DashboardPeriodKey, EntryMethodAnalyticsRow, LastNTradeCount, RDistributionBucket, Settings, SetupAnalyticsRow, SetupEntryMethodAnalyticsRow, Trade, TradeExit } from "./types";
+import { apiDelete, apiGet, apiSend, endpoints, type AppData, type ClosedTradeFilters, type ClosedTradeOutcomeFilter, type ReferenceData, uploadScreenshot } from "./api";
+import type { CapitalCurvePoint, Dashboard, DashboardPeriodKey, EntryMethodAnalyticsRow, LastNTradeCount, PagedTrades, RDistributionBucket, Settings, SetupAnalyticsRow, SetupEntryMethodAnalyticsRow, Trade, TradeExit } from "./types";
 
 type View = "dashboard" | "analytics" | "new" | "open" | "closed" | "settings";
 
@@ -17,10 +17,18 @@ const dashboardPeriodOptions: readonly { readonly key: DashboardPeriodKey; reado
   { key: "all_time", label: "All time" }
 ];
 const defaultLastNTradeCount: LastNTradeCount = 20;
+const closedTradePageSize: number = 50;
 const lastNTradeOptions: readonly { readonly count: LastNTradeCount; readonly label: string }[] = [
   { count: 10, label: "Last 10" },
   { count: 20, label: "Last 20" },
   { count: 50, label: "Last 50" }
+];
+const defaultClosedTradeFilters: ClosedTradeFilters = { symbol: "", period: "all_time", setupId: "", entryMethodId: "", outcome: "all" };
+const closedTradeOutcomeOptions: readonly { readonly key: ClosedTradeOutcomeFilter; readonly label: string }[] = [
+  { key: "all", label: "All outcomes" },
+  { key: "winners", label: "Winners" },
+  { key: "losers", label: "Losers" },
+  { key: "breakeven", label: "Breakeven" }
 ];
 
 type StopLossEditedField = "percentage" | "price";
@@ -88,7 +96,7 @@ export function App(): JSX.Element {
       apiGet<Settings>(endpoints.settings),
       apiGet<ReferenceData>(endpoints.referenceData),
       apiGet<readonly Trade[]>(endpoints.openTrades),
-      apiGet<readonly Trade[]>(endpoints.closedTrades)
+      apiGet<PagedTrades>(endpoints.closedTrades({ ...defaultClosedTradeFilters, limit: closedTradePageSize, offset: 0 }))
     ]);
     setData({ dashboard, settings, referenceData, openTrades, closedTrades });
   };
@@ -154,7 +162,7 @@ export function App(): JSX.Element {
         {view === "analytics" ? <AnalyticsView dashboard={data.dashboard} lastNTradeCount={lastNTradeCount} period={dashboardPeriod} onLastNTradeCountChange={changeLastNTradeCount} onPeriodChange={changeDashboardPeriod} /> : null}
         {view === "new" ? <NewTradeView data={data} onSaved={async () => { await reload(); setView("open"); showToast("Trade saved"); }} /> : null}
         {view === "open" ? <TradesView mode="open" title="Open Trades" trades={data.openTrades} onSelect={setSelectedTradeId} /> : null}
-        {view === "closed" ? <TradesView mode="closed" title="Closed Trades" trades={data.closedTrades} onSelect={setSelectedTradeId} /> : null}
+        {view === "closed" ? <ClosedTradesView initialPage={data.closedTrades} referenceData={data.referenceData} onSelect={setSelectedTradeId} /> : null}
         {view === "settings" ? <SettingsView data={data} onSaved={reload} /> : null}
       </section>
       {selectedTradeId ? <TradeDetail tradeId={selectedTradeId} referenceData={data.referenceData} onClose={() => setSelectedTradeId(null)} onChanged={reload} onDeleted={async () => { setSelectedTradeId(null); await reload(); showToast("Trade deleted"); }} /> : null}
@@ -766,6 +774,76 @@ function TradesView(props: { readonly mode: "open" | "closed"; readonly title: s
         ))}
       </div>
     </>
+  );
+}
+
+function ClosedTradesView(props: { readonly initialPage: PagedTrades; readonly referenceData: ReferenceData; readonly onSelect: (id: number) => void }): JSX.Element {
+  const [filters, setFilters] = useState<ClosedTradeFilters>(defaultClosedTradeFilters);
+  const [page, setPage] = useState<PagedTrades>(props.initialPage);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const fetchClosedTrades = async (nextFilters: ClosedTradeFilters, offset: number, append: boolean): Promise<void> => {
+    setLoading(true);
+    setError("");
+    try {
+      const nextPage: PagedTrades = await apiGet<PagedTrades>(endpoints.closedTrades({ ...nextFilters, limit: closedTradePageSize, offset }));
+      setPage((currentPage) => append ? { ...nextPage, items: [...currentPage.items, ...nextPage.items] } : nextPage);
+    } catch (unknownError: unknown) {
+      setError(unknownError instanceof Error ? unknownError.message : "Unable to load closed trades");
+    } finally {
+      setLoading(false);
+    }
+  };
+  const updateFilters = (nextFilters: ClosedTradeFilters): void => {
+    setFilters(nextFilters);
+    void fetchClosedTrades(nextFilters, 0, false);
+  };
+  const loadMore = (): void => {
+    void fetchClosedTrades(filters, page.items.length, true);
+  };
+  return (
+    <>
+      <Header eyebrow="Journal" title="Closed Trades" />
+      <section className="panel trade-filters">
+        <Input label="Symbol" value={filters.symbol} onChange={(value) => updateFilters({ ...filters, symbol: value })} />
+        <label><span>Period</span><select value={filters.period} onChange={(event) => updateFilters({ ...filters, period: event.target.value as DashboardPeriodKey })}>{dashboardPeriodOptions.map((option) => <option key={option.key} value={option.key}>{option.label}</option>)}</select></label>
+        <label><span>Setup</span><select value={filters.setupId} onChange={(event) => updateFilters({ ...filters, setupId: event.target.value })}><option value="">All setups</option>{props.referenceData.setups.map((setup) => <option key={setup.id} value={setup.id}>{setup.name}</option>)}</select></label>
+        <label><span>Entry Method</span><select value={filters.entryMethodId} onChange={(event) => updateFilters({ ...filters, entryMethodId: event.target.value })}><option value="">All entry methods</option>{props.referenceData.entryMethods.map((entryMethod) => <option key={entryMethod.id} value={entryMethod.id}>{entryMethod.name}</option>)}</select></label>
+        <label><span>Outcome</span><select value={filters.outcome} onChange={(event) => updateFilters({ ...filters, outcome: event.target.value as ClosedTradeOutcomeFilter })}>{closedTradeOutcomeOptions.map((option) => <option key={option.key} value={option.key}>{option.label}</option>)}</select></label>
+      </section>
+      {error ? <p className="info-note">{error}</p> : null}
+      <TradesTable mode="closed" trades={page.items} onSelect={props.onSelect} />
+      <div className="load-more-row">
+        <span className="muted">Showing {page.items.length} of {page.total} closed trades</span>
+        {page.hasMore ? <button className="secondary" disabled={loading} onClick={loadMore} type="button">{loading ? "Loading..." : "Load more"}</button> : null}
+      </div>
+    </>
+  );
+}
+
+function TradesTable(props: { readonly mode: "open" | "closed"; readonly trades: readonly Trade[]; readonly onSelect: (id: number) => void }): JSX.Element {
+  const finalColumnLabel: string = props.mode === "closed" ? "Duration" : "Status";
+  return (
+    <div className={`table ${props.mode === "open" ? "open-trades-table" : "closed-trades-table"}`}>
+      <div className="table-head">
+        <span>Symbol</span><span>Entry</span><span>Qty</span><span>Position %</span><span>Impact %</span><span>P&L</span><span>R</span>
+        {props.mode === "open" ? <><span>Unrealized P&L</span><span>Unrealized R</span><span>Unrealized Impact %</span></> : null}
+        <span>{finalColumnLabel}</span>
+      </div>
+      {props.trades.map((trade) => (
+        <button className="table-row" key={trade.id} onClick={() => props.onSelect(trade.id)} type="button">
+          <span><strong>{trade.symbol}</strong><small>{formatTradeClassification(trade)}</small></span>
+          <span>{money(trade.entryPrice)}<small>{trade.entryDate}</small></span>
+          <span>{formatTableQuantity(props.mode, trade)}</span>
+          <span>{formatPercent(trade.positionSizePercentage)}</span>
+          <span>{formatSignedPercent(trade.summary.portfolioImpactPercentage)}</span>
+          <span>{money(trade.summary.realizedPnl)}</span>
+          <span>{trade.summary.finalRMultiple}</span>
+          {props.mode === "open" ? <><span>{money(trade.unrealizedPnl)}</span><span>{formatR(trade.unrealizedR)}</span><span>{formatSignedPercent(trade.unrealizedPortfolioImpactPercentage)}</span></> : null}
+          <span>{props.mode === "closed" ? formatDuration(trade.summary.durationDays) : trade.summary.status.replace("_", " ")}</span>
+        </button>
+      ))}
+    </div>
   );
 }
 

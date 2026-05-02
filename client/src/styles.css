@@ -686,6 +686,21 @@ textarea {
   overflow: hidden;
 }
 
+.trade-filters {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  margin-bottom: 14px;
+}
+
+.load-more-row {
+  align-items: center;
+  display: flex;
+  gap: 14px;
+  justify-content: space-between;
+  margin-top: 14px;
+}
+
 .table-head, .table-row {
   display: grid;
   gap: 12px;
@@ -992,7 +1007,11 @@ small {
   .analytics-with-distribution {
     grid-template-columns: 1fr;
   }
-  .metric-grid, .snapshot-grid, .equity-summary, .equity-selected-summary, .form-grid, .table-head, .table-row {
+  .load-more-row {
+    align-items: stretch;
+    display: grid;
+  }
+  .metric-grid, .snapshot-grid, .equity-summary, .equity-selected-summary, .form-grid, .table-head, .table-row, .trade-filters {
     grid-template-columns: 1fr;
   }
 }

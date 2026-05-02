@@ -62,6 +62,14 @@ export type Trade = {
   readonly summary: TradeSummary;
 };
 
+export type PagedTrades = {
+  readonly items: readonly Trade[];
+  readonly total: number;
+  readonly limit: number;
+  readonly offset: number;
+  readonly hasMore: boolean;
+};
+
 export type TradeExit = {
   readonly id: number;
   readonly exitDate: string;

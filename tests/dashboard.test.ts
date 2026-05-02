@@ -2,7 +2,7 @@ import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
 import { buildDashboard, parseLastNTradeCount, type Dashboard, type DashboardPeriodKey } from "../server/src/dashboard";
 import { initializeDatabase } from "../server/src/db";
-import { addExit, createTrade, getTrade, updateActiveStopLoss, updateCurrentPrice } from "../server/src/repository";
+import { addExit, createTrade, getTrade, listClosedTradesPage, updateActiveStopLoss, updateCurrentPrice } from "../server/src/repository";
 
 const dashboardToday: Date = new Date("2026-05-02T00:00:00Z");
 
@@ -425,6 +425,43 @@ describe("dashboard period metrics", () => {
     ]);
   });
 
+  it("pages closed trade history and reports hasMore", () => {
+    const db: Database.Database = createDashboardDatabase();
+    Array.from({ length: 55 }, (_value, index: number) => {
+      createClosedTradeWithFinalR(db, { symbol: `PAGE${index}`, finalR: 1, entryDate: "2026-04-01", exitDate: "2026-04-30" });
+    });
+
+    const firstPage = listClosedTradesPage(db, createClosedTradeFilters({ limit: 50, offset: 0 }));
+    const secondPage = listClosedTradesPage(db, createClosedTradeFilters({ limit: 50, offset: 50 }));
+
+    expect(firstPage.items).toHaveLength(50);
+    expect(firstPage.total).toBe(55);
+    expect(firstPage.hasMore).toBe(true);
+    expect(firstPage.items[0].symbol).toBe("PAGE54");
+    expect(secondPage.items).toHaveLength(5);
+    expect(secondPage.hasMore).toBe(false);
+  });
+
+  it("filters closed trade history by symbol, period, setup, entry method, and outcome", () => {
+    const db: Database.Database = createDashboardDatabase();
+    createClosedTradeWithFinalR(db, { symbol: "ALPHAWIN", finalR: 2, entryDate: "2026-04-01", exitDate: "2026-04-05", setupId: 1, entryMethodId: 1 });
+    createClosedTradeWithFinalR(db, { symbol: "ALPHALOSS", finalR: -1, entryDate: "2026-04-02", exitDate: "2026-04-06", setupId: 1, entryMethodId: 2 });
+    createClosedTradeWithFinalR(db, { symbol: "BETAWIN", finalR: 1, entryDate: "2026-05-01", exitDate: "2026-05-02", setupId: 2, entryMethodId: 1 });
+    createClosedTradeWithFinalR(db, { symbol: "ALPHABREAKEVEN", finalR: 0, entryDate: "2026-04-03", exitDate: "2026-04-07", setupId: 1, entryMethodId: 1 });
+
+    const page = listClosedTradesPage(db, createClosedTradeFilters({
+      symbol: "alpha",
+      setupId: 1,
+      entryMethodId: 1,
+      outcome: "winners",
+      periodStart: "2026-04-01",
+      periodEnd: "2026-04-30"
+    }));
+
+    expect(page.items.map((trade) => trade.symbol)).toEqual(["ALPHAWIN"]);
+    expect(listClosedTradesPage(db, createClosedTradeFilters({ outcome: "breakeven" })).items.map((trade) => trade.symbol)).toEqual(["ALPHABREAKEVEN"]);
+  });
+
   it("infers capital history start date for existing journal data", () => {
     const db: Database.Database = createDashboardDatabase();
     createMtarTechTrade(db);
@@ -550,6 +587,20 @@ function createClosedTradeWithFinalR(
   addExit(db, createExitInput({ tradeId, exitDate: params.exitDate, exitPrice, quantity }));
   db.prepare("UPDATE settings SET value = '2026-04-01' WHERE key = 'capitalHistoryStartDate'").run();
   return tradeId;
+}
+
+function createClosedTradeFilters(overrides: Partial<Parameters<typeof listClosedTradesPage>[1]> = {}): Parameters<typeof listClosedTradesPage>[1] {
+  return {
+    limit: 50,
+    offset: 0,
+    symbol: "",
+    setupId: null,
+    entryMethodId: null,
+    outcome: "all",
+    periodStart: null,
+    periodEnd: "2026-12-31",
+    ...overrides
+  };
 }
 
 function createOpenTrade(

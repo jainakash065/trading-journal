@@ -3,7 +3,7 @@ import express, { type Request, type Response } from "express";
 import multer from "multer";
 import path from "node:path";
 import { z } from "zod";
-import { buildDashboard, parseDashboardPeriodKey, parseLastNTradeCount } from "./dashboard";
+import { buildDashboard, parseDashboardPeriodKey, parseLastNTradeCount, type DashboardPeriodKey } from "./dashboard";
 import { createDatabase } from "./db";
 import { entryScreenshotDir, exitScreenshotDir } from "./paths";
 import {
@@ -15,6 +15,7 @@ import {
   getReview,
   getSettings,
   getTrade,
+  listClosedTradesPage,
   listChecklistItems,
   listEntryMethods,
   listChecklistResponses,
@@ -30,11 +31,13 @@ import {
   updateReview,
   updateSettings,
   updateTrade,
-  upsertListItem
+  upsertListItem,
+  type ClosedTradeOutcome
 } from "./repository";
 import { calculateSuggestedQuantity, summarizeTrade } from "./calculations";
 
 const db = createDatabase();
+const defaultClosedTradeLimit = 50;
 
 const tradeSchema = z.object({
   symbol: z.string().min(1),
@@ -134,7 +137,19 @@ export function createApp(): express.Express {
     });
   });
   app.get("/api/trades", (request: Request, response: Response) => {
-    response.json(listTrades(db, request.query.status === "closed").map((trade) => {
+    if (request.query.status === "closed") {
+      const filters = parseClosedTradeFilters(request.query);
+      const page = listClosedTradesPage(db, filters);
+      response.json({
+        ...page,
+        items: page.items.map((trade) => {
+          const exits = listExits(db, trade.id);
+          return { ...trade, summary: summarizeTrade(trade, exits) };
+        })
+      });
+      return;
+    }
+    response.json(listTrades(db, false).map((trade) => {
       const exits = listExits(db, trade.id);
       return { ...trade, summary: summarizeTrade(trade, exits) };
     }));
@@ -220,4 +235,78 @@ export function createApp(): express.Express {
     response.status(400).json({ message });
   });
   return app;
+}
+
+function parseClosedTradeFilters(query: Request["query"]): {
+  readonly limit: number;
+  readonly offset: number;
+  readonly symbol: string;
+  readonly setupId: number | null;
+  readonly entryMethodId: number | null;
+  readonly outcome: ClosedTradeOutcome;
+  readonly periodStart: string | null;
+  readonly periodEnd: string | null;
+} {
+  const periodRange = getClosedTradePeriodRange(parseDashboardPeriodKey(query.period));
+  return {
+    limit: getPositiveInteger(query.limit, defaultClosedTradeLimit),
+    offset: getNonNegativeInteger(query.offset),
+    symbol: typeof query.symbol === "string" ? query.symbol : "",
+    setupId: getNullableInteger(query.setupId),
+    entryMethodId: getNullableInteger(query.entryMethodId),
+    outcome: parseClosedTradeOutcome(query.outcome),
+    periodStart: periodRange.startDate,
+    periodEnd: periodRange.endDate
+  };
+}
+
+function getPositiveInteger(value: unknown, fallback: number): number {
+  const parsed: number = typeof value === "string" ? Number(value) : fallback;
+  return Number.isInteger(parsed) && parsed > 0 ? Math.min(parsed, 100) : fallback;
+}
+
+function getNonNegativeInteger(value: unknown): number {
+  const parsed: number = typeof value === "string" ? Number(value) : 0;
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : 0;
+}
+
+function getNullableInteger(value: unknown): number | null {
+  const parsed: number = typeof value === "string" && value !== "" ? Number(value) : Number.NaN;
+  return Number.isInteger(parsed) ? parsed : null;
+}
+
+function parseClosedTradeOutcome(value: unknown): ClosedTradeOutcome {
+  return value === "winners" || value === "losers" || value === "breakeven" ? value : "all";
+}
+
+function getClosedTradePeriodRange(periodKey: DashboardPeriodKey): { readonly startDate: string | null; readonly endDate: string | null } {
+  const today: Date = new Date();
+  const year: number = today.getFullYear();
+  const month: number = today.getMonth();
+  if (periodKey === "all_time") {
+    return { startDate: null, endDate: null };
+  }
+  if (periodKey === "this_week") {
+    const start = new Date(today);
+    start.setDate(today.getDate() - today.getDay());
+    return { startDate: formatDate(start), endDate: formatDate(today) };
+  }
+  if (periodKey === "this_month") {
+    return { startDate: formatDate(new Date(year, month, 1)), endDate: formatDate(today) };
+  }
+  if (periodKey === "last_month") {
+    return { startDate: formatDate(new Date(year, month - 1, 1)), endDate: formatDate(new Date(year, month, 0)) };
+  }
+  const currentFyStartYear: number = month >= 3 ? year : year - 1;
+  if (periodKey === "current_fy") {
+    return { startDate: formatDate(new Date(currentFyStartYear, 3, 1)), endDate: formatDate(new Date(currentFyStartYear + 1, 2, 31)) };
+  }
+  return { startDate: formatDate(new Date(currentFyStartYear - 1, 3, 1)), endDate: formatDate(new Date(currentFyStartYear, 2, 31)) };
+}
+
+function formatDate(value: Date): string {
+  const year: number = value.getFullYear();
+  const month: string = String(value.getMonth() + 1).padStart(2, "0");
+  const day: string = String(value.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }

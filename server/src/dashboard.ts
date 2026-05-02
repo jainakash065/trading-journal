@@ -5,6 +5,7 @@ type ClosedTradeMetric = {
   readonly id: number;
   readonly symbol: string;
   readonly setupName: string | null;
+  readonly entryMethodName: string | null;
   readonly realizedPnl: number;
   readonly finalR: number;
   readonly entryDate: string;
@@ -91,6 +92,29 @@ type SetupAnalyticsRow = {
   readonly pnl: number;
 };
 
+type EntryMethodAnalyticsRow = {
+  readonly entryMethodName: string;
+  readonly closedTrades: number;
+  readonly winRate: number;
+  readonly rExpectancy: number;
+  readonly averageWinningR: number;
+  readonly averageLosingR: number;
+  readonly medianR: number;
+  readonly pnl: number;
+};
+
+type SetupEntryMethodAnalyticsRow = {
+  readonly setupName: string;
+  readonly entryMethodName: string;
+  readonly closedTrades: number;
+  readonly winRate: number;
+  readonly rExpectancy: number;
+  readonly averageWinningR: number;
+  readonly averageLosingR: number;
+  readonly medianR: number;
+  readonly pnl: number;
+};
+
 export type Dashboard = {
   readonly period: DashboardPeriod;
   readonly capitalHistoryStartDate: string;
@@ -135,6 +159,8 @@ export type Dashboard = {
   readonly capitalCurve: readonly CapitalCurvePoint[];
   readonly lastNTrades: LastNTradesAnalytics;
   readonly setupAnalytics: readonly SetupAnalyticsRow[];
+  readonly entryMethodAnalytics: readonly EntryMethodAnalyticsRow[];
+  readonly setupEntryMethodAnalytics: readonly SetupEntryMethodAnalyticsRow[];
 };
 
 export function buildDashboard(db: Database.Database, periodKey: DashboardPeriodKey = "this_month", today: Date = new Date(), lastN: LastNTradeCount = 20): Dashboard {
@@ -209,7 +235,9 @@ export function buildDashboard(db: Database.Database, periodKey: DashboardPeriod
       todayText
     }),
     lastNTrades,
-    setupAnalytics: calculateSetupAnalytics(periodTrades)
+    setupAnalytics: calculateSetupAnalytics(periodTrades),
+    entryMethodAnalytics: calculateEntryMethodAnalytics(periodTrades),
+    setupEntryMethodAnalytics: calculateSetupEntryMethodAnalytics(periodTrades)
   };
 }
 
@@ -231,7 +259,7 @@ export function parseLastNTradeCount(value: unknown): LastNTradeCount {
 
 function listClosedTradeMetrics(db: Database.Database): readonly ClosedTradeMetric[] {
   return db.prepare(`
-    SELECT t.id, t.symbol, s.name AS setupName, COALESCE(SUM(e.pnl), 0) AS realizedPnl,
+    SELECT t.id, t.symbol, s.name AS setupName, em.name AS entryMethodName, COALESCE(SUM(e.pnl), 0) AS realizedPnl,
       CASE
         WHEN ((t.entry_price - t.stop_loss) * t.quantity) > 0
         THEN ROUND(COALESCE(SUM(e.pnl), 0) / ((t.entry_price - t.stop_loss) * t.quantity), 2)
@@ -244,6 +272,7 @@ function listClosedTradeMetrics(db: Database.Database): readonly ClosedTradeMetr
     FROM trades t
     JOIN trade_exits e ON e.trade_id = t.id
     LEFT JOIN setups s ON s.id = t.setup_id
+    LEFT JOIN entry_methods em ON em.id = t.entry_method_id
     LEFT JOIN trade_reviews r ON r.trade_id = t.id
     WHERE t.status = 'closed'
     GROUP BY t.id
@@ -350,6 +379,61 @@ function createSetupAnalyticsRow(setupName: string, trades: readonly ClosedTrade
     averageLosingR: analytics.averageLosingR,
     medianR: analytics.medianR,
     pnl: round(trades.reduce((total: number, trade: ClosedTradeMetric) => total + trade.realizedPnl, 0))
+  };
+}
+
+function calculateEntryMethodAnalytics(trades: readonly ClosedTradeMetric[]): readonly EntryMethodAnalyticsRow[] {
+  const grouped: Map<string, ClosedTradeMetric[]> = new Map();
+  trades.forEach((trade: ClosedTradeMetric) => {
+    const entryMethodName: string = trade.entryMethodName ?? "Unassigned";
+    grouped.set(entryMethodName, [...(grouped.get(entryMethodName) ?? []), trade]);
+  });
+  return [...grouped.entries()]
+    .map(([entryMethodName, entryMethodTrades]: [string, ClosedTradeMetric[]]) => createEntryMethodAnalyticsRow(entryMethodName, entryMethodTrades))
+    .sort((first: EntryMethodAnalyticsRow, second: EntryMethodAnalyticsRow) => second.rExpectancy - first.rExpectancy || second.closedTrades - first.closedTrades || first.entryMethodName.localeCompare(second.entryMethodName));
+}
+
+function createEntryMethodAnalyticsRow(entryMethodName: string, trades: readonly ClosedTradeMetric[]): EntryMethodAnalyticsRow {
+  const analytics: RAnalytics = calculateRAnalytics(trades);
+  return {
+    entryMethodName,
+    closedTrades: trades.length,
+    winRate: analytics.winPercentage,
+    rExpectancy: analytics.rExpectancy,
+    averageWinningR: analytics.averageWinningR,
+    averageLosingR: analytics.averageLosingR,
+    medianR: analytics.medianR,
+    pnl: round(trades.reduce((total: number, trade: ClosedTradeMetric) => total + trade.realizedPnl, 0))
+  };
+}
+
+function calculateSetupEntryMethodAnalytics(trades: readonly ClosedTradeMetric[]): readonly SetupEntryMethodAnalyticsRow[] {
+  const grouped: Map<string, ClosedTradeMetric[]> = new Map();
+  trades.forEach((trade: ClosedTradeMetric) => {
+    const setupName: string = trade.setupName ?? "Unassigned";
+    const entryMethodName: string = trade.entryMethodName ?? "Unassigned";
+    grouped.set(`${setupName}\u0000${entryMethodName}`, [...(grouped.get(`${setupName}\u0000${entryMethodName}`) ?? []), trade]);
+  });
+  return [...grouped.entries()]
+    .map(([key, groupedTrades]: [string, ClosedTradeMetric[]]) => {
+      const [setupName, entryMethodName] = key.split("\u0000");
+      return createSetupEntryMethodAnalyticsRow({ setupName, entryMethodName, trades: groupedTrades });
+    })
+    .sort((first: SetupEntryMethodAnalyticsRow, second: SetupEntryMethodAnalyticsRow) => second.rExpectancy - first.rExpectancy || second.closedTrades - first.closedTrades || first.setupName.localeCompare(second.setupName) || first.entryMethodName.localeCompare(second.entryMethodName));
+}
+
+function createSetupEntryMethodAnalyticsRow(params: { readonly setupName: string; readonly entryMethodName: string; readonly trades: readonly ClosedTradeMetric[] }): SetupEntryMethodAnalyticsRow {
+  const analytics: RAnalytics = calculateRAnalytics(params.trades);
+  return {
+    setupName: params.setupName,
+    entryMethodName: params.entryMethodName,
+    closedTrades: params.trades.length,
+    winRate: analytics.winPercentage,
+    rExpectancy: analytics.rExpectancy,
+    averageWinningR: analytics.averageWinningR,
+    averageLosingR: analytics.averageLosingR,
+    medianR: analytics.medianR,
+    pnl: round(params.trades.reduce((total: number, trade: ClosedTradeMetric) => total + trade.realizedPnl, 0))
   };
 }
 

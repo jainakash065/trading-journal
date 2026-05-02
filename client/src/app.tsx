@@ -1,7 +1,7 @@
 import { Activity, BarChart3, BookOpen, ChartNoAxesCombined, ClipboardCheck, IndianRupee, Pencil, Plus, Settings as SettingsIcon, Trash2, X } from "lucide-react";
 import { FormEvent, type PointerEvent, useEffect, useState } from "react";
 import { apiDelete, apiGet, apiSend, endpoints, type AppData, type ReferenceData, uploadScreenshot } from "./api";
-import type { CapitalCurvePoint, Dashboard, DashboardPeriodKey, LastNTradeCount, RDistributionBucket, Settings, SetupAnalyticsRow, Trade, TradeExit } from "./types";
+import type { CapitalCurvePoint, Dashboard, DashboardPeriodKey, EntryMethodAnalyticsRow, LastNTradeCount, RDistributionBucket, Settings, SetupAnalyticsRow, SetupEntryMethodAnalyticsRow, Trade, TradeExit } from "./types";
 
 type View = "dashboard" | "analytics" | "new" | "open" | "closed" | "settings";
 
@@ -48,6 +48,7 @@ type TradeFormState = {
   readonly riskPercentage: string;
   readonly riskCapitalBase: string;
   readonly setupId: string;
+  readonly entryMethodId: string;
   readonly entryReason: string;
   readonly emotionalState: string;
   readonly confidence: string;
@@ -282,6 +283,14 @@ function AnalyticsView(props: {
         <SetupAnalyticsPanel rows={d.setupAnalytics} />
       </section>
       <section className="dashboard-section">
+        <h3>Entry Method Analytics</h3>
+        <EntryMethodAnalyticsPanel rows={d.entryMethodAnalytics} />
+      </section>
+      <section className="dashboard-section">
+        <h3>Setup + Entry Method Analytics</h3>
+        <SetupEntryMethodAnalyticsPanel rows={d.setupEntryMethodAnalytics} />
+      </section>
+      <section className="dashboard-section">
         <h3>R Distribution</h3>
         <RDistributionPanel buckets={d.rDistribution} subtitle={`${getDistributionTotal(d.rDistribution)} closed trades in this period`} title="Period R Distribution" />
       </section>
@@ -469,6 +478,61 @@ function SetupAnalyticsPanel(props: { readonly rows: readonly SetupAnalyticsRow[
   );
 }
 
+function EntryMethodAnalyticsPanel(props: { readonly rows: readonly EntryMethodAnalyticsRow[] }): JSX.Element {
+  if (props.rows.length === 0) {
+    return <section className="panel"><p className="muted">No closed trades with entry methods in this period.</p></section>;
+  }
+  return (
+    <section className="panel setup-analytics-panel">
+      <div className="setup-analytics-table">
+        <div className="setup-analytics-head">
+          <span>Entry Method</span><span>Trades</span><span>Win %</span><span>R Expectancy</span><span>Avg Win R</span><span>Avg Loss R</span><span>Median R</span><span>P&L</span>
+        </div>
+        {props.rows.map((row: EntryMethodAnalyticsRow) => (
+          <div className="setup-analytics-row" key={row.entryMethodName}>
+            <span><strong>{row.entryMethodName}</strong></span>
+            <span>{row.closedTrades}</span>
+            <span>{row.winRate}%</span>
+            <span className={getToneClass(row.rExpectancy)}>{formatR(row.rExpectancy)}</span>
+            <span className="good-text">{formatR(row.averageWinningR)}</span>
+            <span className="bad-text">{formatR(row.averageLosingR)}</span>
+            <span className={getToneClass(row.medianR)}>{formatR(row.medianR)}</span>
+            <span className={getToneClass(row.pnl)}>{money(row.pnl)}</span>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function SetupEntryMethodAnalyticsPanel(props: { readonly rows: readonly SetupEntryMethodAnalyticsRow[] }): JSX.Element {
+  if (props.rows.length === 0) {
+    return <section className="panel"><p className="muted">No closed setup and entry method combinations in this period.</p></section>;
+  }
+  return (
+    <section className="panel setup-entry-method-panel">
+      <div className="setup-entry-method-table">
+        <div className="setup-entry-method-head">
+          <span>Setup</span><span>Entry Method</span><span>Trades</span><span>Win %</span><span>R Expectancy</span><span>Avg Win R</span><span>Avg Loss R</span><span>Median R</span><span>P&L</span>
+        </div>
+        {props.rows.map((row: SetupEntryMethodAnalyticsRow) => (
+          <div className="setup-entry-method-row" key={`${row.setupName}-${row.entryMethodName}`}>
+            <span><strong>{row.setupName}</strong></span>
+            <span>{row.entryMethodName}</span>
+            <span>{row.closedTrades}</span>
+            <span>{row.winRate}%</span>
+            <span className={getToneClass(row.rExpectancy)}>{formatR(row.rExpectancy)}</span>
+            <span className="good-text">{formatR(row.averageWinningR)}</span>
+            <span className="bad-text">{formatR(row.averageLosingR)}</span>
+            <span className={getToneClass(row.medianR)}>{formatR(row.medianR)}</span>
+            <span className={getToneClass(row.pnl)}>{money(row.pnl)}</span>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function EquityCurvePanel(props: { readonly dashboard: Dashboard }): JSX.Element {
   const d = props.dashboard;
   const latestPointIndex: number = Math.max(d.capitalCurve.length - 1, 0);
@@ -591,6 +655,7 @@ function NewTradeView(props: { readonly data: AppData; readonly onSaved: () => P
     riskPercentage: props.data.settings.defaultRiskPercentage ?? "1",
     riskCapitalBase: String(props.data.settings.currentCapital),
     setupId: "",
+    entryMethodId: "",
     entryReason: "",
     emotionalState: "",
     confidence: "3",
@@ -622,6 +687,7 @@ function NewTradeView(props: { readonly data: AppData; readonly onSaved: () => P
         riskPercentage: Number(form.riskPercentage),
         riskCapitalBase: Number(form.riskCapitalBase),
         setupId: form.setupId ? Number(form.setupId) : null,
+        entryMethodId: form.entryMethodId ? Number(form.entryMethodId) : null,
         entryReason: form.entryReason,
         emotionalState: form.emotionalState,
         confidence: Number(form.confidence),
@@ -656,6 +722,7 @@ function NewTradeView(props: { readonly data: AppData; readonly onSaved: () => P
         <div className="derived-metric"><span>Actual risk</span><strong>{money(actualRisk)}</strong></div>
         <div className="derived-metric"><span>Risk used</span><strong>{riskUsedPercentage.toFixed(2)}%</strong></div>
         <label><span>Setup</span><select value={form.setupId} onChange={(event) => setForm({ ...form, setupId: event.target.value })}><option value="">Select setup</option>{props.data.referenceData.setups.map((setup) => <option key={setup.id} value={setup.id}>{setup.name}</option>)}</select></label>
+        <label><span>Entry Method</span><select value={form.entryMethodId} onChange={(event) => setForm({ ...form, entryMethodId: event.target.value })}><option value="">Select entry method</option>{props.data.referenceData.entryMethods.map((entryMethod) => <option key={entryMethod.id} value={entryMethod.id}>{entryMethod.name}</option>)}</select></label>
         <Input label="Confidence 1-5" type="number" value={form.confidence} onChange={(value) => setForm({ ...form, confidence: value })} />
         <label className="wide"><span>Entry reason</span><textarea value={form.entryReason} onChange={(event) => setForm({ ...form, entryReason: event.target.value })} /></label>
         <label className="wide"><span>Emotional state</span><textarea value={form.emotionalState} onChange={(event) => setForm({ ...form, emotionalState: event.target.value })} /></label>
@@ -686,7 +753,7 @@ function TradesView(props: { readonly mode: "open" | "closed"; readonly title: s
         </div>
         {props.trades.map((trade) => (
           <button className="table-row" key={trade.id} onClick={() => props.onSelect(trade.id)} type="button">
-            <span><strong>{trade.symbol}</strong><small>{trade.setupName ?? "No setup"}</small></span>
+            <span><strong>{trade.symbol}</strong><small>{formatTradeClassification(trade)}</small></span>
             <span>{money(trade.entryPrice)}<small>{trade.entryDate}</small></span>
             <span>{formatTableQuantity(props.mode, trade)}</span>
             <span>{formatPercent(trade.positionSizePercentage)}</span>
@@ -857,6 +924,7 @@ function TradeDetail(props: { readonly tradeId: number; readonly referenceData: 
       riskPercentage: String(detail.trade.riskPercentage),
       riskCapitalBase: String(detail.trade.riskCapitalBase),
       setupId: detail.trade.setupId ? String(detail.trade.setupId) : "",
+      entryMethodId: detail.trade.entryMethodId ? String(detail.trade.entryMethodId) : "",
       entryReason: detail.trade.entryReason,
       emotionalState: detail.trade.emotionalState,
       confidence: String(detail.trade.confidence),
@@ -885,6 +953,7 @@ function TradeDetail(props: { readonly tradeId: number; readonly referenceData: 
         riskPercentage: Number(editTradeForm.riskPercentage),
         riskCapitalBase: Number(editTradeForm.riskCapitalBase),
         setupId: editTradeForm.setupId ? Number(editTradeForm.setupId) : null,
+        entryMethodId: editTradeForm.entryMethodId ? Number(editTradeForm.entryMethodId) : null,
         entryReason: editTradeForm.entryReason,
         emotionalState: editTradeForm.emotionalState,
         confidence: Number(editTradeForm.confidence),
@@ -1005,7 +1074,7 @@ function TradeDetail(props: { readonly tradeId: number; readonly referenceData: 
       <header className="drawer-header">
         <div className="drawer-title">
           <h2>{detail.trade.symbol}</h2>
-          <p className="muted">{detail.trade.entryDate} · {detail.trade.setupName ?? "No setup"} · {detail.summary.status.replace("_", " ")}</p>
+          <p className="muted">{detail.trade.entryDate} · {formatTradeClassification(detail.trade)} · {detail.summary.status.replace("_", " ")}</p>
         </div>
         <div className="drawer-actions">
           <button className="secondary inline-action" onClick={openTradeEditor} type="button"><Pencil size={16} /> Edit Trade</button>
@@ -1078,6 +1147,7 @@ function TradeDetail(props: { readonly tradeId: number; readonly referenceData: 
           <div className="derived-metric"><span>Actual risk</span><strong>{money(Math.max(Number(editTradeForm.entryPrice) - Number(editTradeForm.stopLoss), 0) * Number(editTradeForm.quantity || 0))}</strong></div>
           <div className="derived-metric"><span>Risk used</span><strong>{formatRiskUsed(editTradeForm)}%</strong></div>
           <label><span>Setup</span><select value={editTradeForm.setupId} onChange={(event) => setEditTradeForm({ ...editTradeForm, setupId: event.target.value })}><option value="">Select setup</option>{props.referenceData.setups.map((setup) => <option key={setup.id} value={setup.id}>{setup.name}</option>)}</select></label>
+          <label><span>Entry Method</span><select value={editTradeForm.entryMethodId} onChange={(event) => setEditTradeForm({ ...editTradeForm, entryMethodId: event.target.value })}><option value="">Select entry method</option>{props.referenceData.entryMethods.map((entryMethod) => <option key={entryMethod.id} value={entryMethod.id}>{entryMethod.name}</option>)}</select></label>
           <Input label="Confidence 1-5" type="number" value={editTradeForm.confidence} onChange={(value) => setEditTradeForm({ ...editTradeForm, confidence: value })} />
           <label><span>Entry reason</span><textarea value={editTradeForm.entryReason} onChange={(event) => setEditTradeForm({ ...editTradeForm, entryReason: event.target.value })} /></label>
           <label><span>Emotional state</span><textarea value={editTradeForm.emotionalState} onChange={(event) => setEditTradeForm({ ...editTradeForm, emotionalState: event.target.value })} /></label>
@@ -1155,6 +1225,7 @@ function SettingsView(props: { readonly data: AppData; readonly onSaved: () => P
     defaultRiskPercentage: props.data.settings.defaultRiskPercentage
   });
   const [newSetup, setNewSetup] = useState("");
+  const [newEntryMethod, setNewEntryMethod] = useState("");
   const [newChecklist, setNewChecklist] = useState("");
   const [newMistake, setNewMistake] = useState("");
   const saveSettings = async (): Promise<void> => {
@@ -1181,6 +1252,7 @@ function SettingsView(props: { readonly data: AppData; readonly onSaved: () => P
       </section>
       <div className="split">
         <ReferenceEditor title="Setups" items={props.data.referenceData.setups.map((item) => item.name ?? "")} value={newSetup} onChange={setNewSetup} onAdd={() => addReference("setups", newSetup)} />
+        <ReferenceEditor title="Entry Methods" items={props.data.referenceData.entryMethods.map((item) => item.name ?? "")} value={newEntryMethod} onChange={setNewEntryMethod} onAdd={() => addReference("entry-methods", newEntryMethod)} />
         <ReferenceEditor title="Checklist" items={props.data.referenceData.checklistItems.map((item) => item.label ?? "")} value={newChecklist} onChange={setNewChecklist} onAdd={() => addReference("checklist", newChecklist)} />
         <ReferenceEditor title="Mistakes" items={props.data.referenceData.mistakeTags.map((item) => item.label ?? "")} value={newMistake} onChange={setNewMistake} onAdd={() => addReference("mistakes", newMistake)} />
       </div>
@@ -1363,6 +1435,10 @@ function formatTableQuantity(mode: "open" | "closed", trade: Trade): string {
     return String(trade.quantity);
   }
   return `${trade.summary.remainingQuantity}/${trade.quantity}`;
+}
+
+function formatTradeClassification(trade: Trade): string {
+  return `${trade.setupName ?? "No setup"} · ${trade.entryMethodName ?? "No entry method"}`;
 }
 
 function updateEntryPrice(form: TradeFormState, entryPrice: string): TradeFormState {

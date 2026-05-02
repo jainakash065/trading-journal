@@ -16,6 +16,7 @@ import {
   getSettings,
   getTrade,
   listChecklistItems,
+  listEntryMethods,
   listChecklistResponses,
   listExits,
   listMistakeTags,
@@ -48,6 +49,7 @@ const tradeSchema = z.object({
   riskPercentage: z.coerce.number().nonnegative(),
   riskCapitalBase: z.coerce.number().nonnegative(),
   setupId: z.coerce.number().int().nullable(),
+  entryMethodId: z.coerce.number().int().nullable().default(null),
   entryReason: z.string().default(""),
   emotionalState: z.string().default(""),
   confidence: z.coerce.number().int().min(1).max(5),
@@ -111,13 +113,14 @@ export function createApp(): express.Express {
   app.put("/api/settings", (request: Request, response: Response) => response.json(updateSettings(db, request.body as Record<string, string>)));
   app.get("/api/reference-data", (_request: Request, response: Response) => response.json({
     setups: listSetups(db),
+    entryMethods: listEntryMethods(db),
     checklistItems: listChecklistItems(db),
     mistakeTags: listMistakeTags(db)
   }));
   app.post("/api/reference-data/:type", (request: Request, response: Response) => {
     const type = request.params.type;
     const value: string = String(request.body.value ?? "").trim();
-    const table = type === "setups" ? "setups" : type === "checklist" ? "checklist_items" : "mistake_tags";
+    const table = type === "setups" ? "setups" : type === "entry-methods" ? "entry_methods" : type === "checklist" ? "checklist_items" : "mistake_tags";
     response.json(upsertListItem(db, table, value));
   });
   app.get("/api/risk/suggested-quantity", (request: Request, response: Response) => {

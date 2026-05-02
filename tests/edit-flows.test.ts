@@ -68,6 +68,33 @@ describe("edit flows", () => {
     expect(afterExit.rMultiple).toBe(beforeExit.rMultiple);
   });
 
+  it("stores and edits trade entry method", () => {
+    const db: Database.Database = createTestDatabase();
+    const tradeId: number = createTestTrade(db);
+    expect(getTrade(db, tradeId)?.entryMethodName).toBeNull();
+    updateTrade(db, tradeId, {
+      symbol: "TEST",
+      market: "India",
+      direction: "Buy",
+      entryDate: "2026-05-01",
+      entryPrice: 100,
+      quantity: 10,
+      stopLoss: 90,
+      riskPercentage: 1,
+      riskCapitalBase: 550000,
+      setupId: 1,
+      entryMethodId: 1,
+      entryReason: "",
+      emotionalState: "",
+      confidence: 3,
+      notes: "",
+      checklistResponses: []
+    });
+    const trade = getTrade(db, tradeId);
+    expect(trade?.entryMethodId).toBe(1);
+    expect(trade?.entryMethodName).toBe("Strong start entry");
+  });
+
   it("recalculates exits, ledger, and checklist when entry fields change", () => {
     const db: Database.Database = createTestDatabase();
     const tradeId: number = createTestTrade(db);

@@ -405,8 +405,16 @@ nav {
   overflow-x: auto;
 }
 
+.setup-entry-method-panel {
+  overflow-x: auto;
+}
+
 .setup-analytics-table {
   min-width: 880px;
+}
+
+.setup-entry-method-table {
+  min-width: 1040px;
 }
 
 .setup-analytics-head,
@@ -433,6 +441,33 @@ nav {
 }
 
 .setup-analytics-row:last-child {
+  border-bottom: 0;
+}
+
+.setup-entry-method-head,
+.setup-entry-method-row {
+  align-items: center;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 1.1fr 1.3fr .5fr .5fr .8fr .7fr .7fr .65fr .75fr;
+  padding: 12px 0;
+}
+
+.setup-entry-method-head {
+  border-bottom: 1px solid #e2ddd2;
+  color: #56616a;
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.setup-entry-method-row {
+  border-bottom: 1px solid #ece7dd;
+  color: #1f2933;
+  font-size: 14px;
+}
+
+.setup-entry-method-row:last-child {
   border-bottom: 0;
 }
 

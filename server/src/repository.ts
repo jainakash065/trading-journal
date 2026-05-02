@@ -29,6 +29,7 @@ type TradeInput = {
   readonly riskPercentage: number;
   readonly riskCapitalBase: number;
   readonly setupId: number | null;
+  readonly entryMethodId?: number | null;
   readonly entryReason: string;
   readonly emotionalState: string;
   readonly confidence: number;
@@ -68,6 +69,10 @@ export function listSetups(db: Database.Database): readonly ListItem[] {
   return db.prepare("SELECT id, name, active FROM setups ORDER BY name").all() as ListItem[];
 }
 
+export function listEntryMethods(db: Database.Database): readonly ListItem[] {
+  return db.prepare("SELECT id, name, active FROM entry_methods ORDER BY name").all() as ListItem[];
+}
+
 export function listChecklistItems(db: Database.Database): readonly ListItem[] {
   return db.prepare("SELECT id, label, active FROM checklist_items ORDER BY id").all() as ListItem[];
 }
@@ -77,10 +82,13 @@ export function listMistakeTags(db: Database.Database): readonly ListItem[] {
 }
 
 export function upsertListItem(db: Database.Database, table: string, value: string): readonly ListItem[] {
-  const column: string = table === "setups" ? "name" : "label";
+  const column: string = table === "setups" || table === "entry_methods" ? "name" : "label";
   db.prepare(`INSERT OR IGNORE INTO ${table} (${column}) VALUES (?)`).run(value);
   if (table === "setups") {
     return listSetups(db);
+  }
+  if (table === "entry_methods") {
+    return listEntryMethods(db);
   }
   if (table === "checklist_items") {
     return listChecklistItems(db);
@@ -93,8 +101,8 @@ export function createTrade(db: Database.Database, input: TradeInput): number {
     const result = db.prepare(`
       INSERT INTO trades (
         symbol, market, direction, entry_date, entry_price, quantity, stop_loss, active_stop_loss, risk_percentage,
-        risk_capital_base, planned_risk_amount, setup_id, entry_reason, emotional_state, confidence, notes
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        risk_capital_base, planned_risk_amount, setup_id, entry_method_id, entry_reason, emotional_state, confidence, notes
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       input.symbol.toUpperCase(),
       input.market,
@@ -108,6 +116,7 @@ export function createTrade(db: Database.Database, input: TradeInput): number {
       input.riskCapitalBase,
       calculatePlannedRiskAmount(input),
       input.setupId,
+      input.entryMethodId ?? null,
       input.entryReason,
       input.emotionalState,
       input.confidence,
@@ -135,7 +144,7 @@ export function updateTrade(db: Database.Database, tradeId: number, input: Trade
     db.prepare(`
       UPDATE trades SET
         symbol = ?, market = ?, direction = ?, entry_date = ?, entry_price = ?, quantity = ?,
-        stop_loss = ?, active_stop_loss = ?, risk_percentage = ?, risk_capital_base = ?, planned_risk_amount = ?, setup_id = ?,
+        stop_loss = ?, active_stop_loss = ?, risk_percentage = ?, risk_capital_base = ?, planned_risk_amount = ?, setup_id = ?, entry_method_id = ?,
         entry_reason = ?, emotional_state = ?, confidence = ?, notes = ?
       WHERE id = ?
     `).run(
@@ -151,6 +160,7 @@ export function updateTrade(db: Database.Database, tradeId: number, input: Trade
       input.riskCapitalBase,
       calculatePlannedRiskAmount(input),
       input.setupId,
+      input.entryMethodId ?? null,
       input.entryReason,
       input.emotionalState,
       input.confidence,
@@ -178,11 +188,12 @@ export function listTrades(db: Database.Database, closed: boolean): readonly Tra
       ROUND((t.entry_price - t.stop_loss) * t.quantity, 2) AS actualRisk,
       CASE WHEN t.planned_risk_amount > 0 THEN ROUND((((t.entry_price - t.stop_loss) * t.quantity) / t.planned_risk_amount) * 100, 2) ELSE 0 END AS riskUsedPercentage,
       ${unrealizedMetricSelectSql()},
-      t.setup_id AS setupId, s.name AS setupName,
+      t.setup_id AS setupId, s.name AS setupName, t.entry_method_id AS entryMethodId, em.name AS entryMethodName,
       t.entry_reason AS entryReason, t.emotional_state AS emotionalState, t.confidence,
       t.notes, t.status, t.created_at AS createdAt
     FROM trades t
     LEFT JOIN setups s ON s.id = t.setup_id
+    LEFT JOIN entry_methods em ON em.id = t.entry_method_id
     LEFT JOIN (
       SELECT trade_id, SUM(quantity) AS exited_quantity
       FROM trade_exits
@@ -204,11 +215,12 @@ export function getTrade(db: Database.Database, tradeId: number): TradeRow | und
       ROUND((t.entry_price - t.stop_loss) * t.quantity, 2) AS actualRisk,
       CASE WHEN t.planned_risk_amount > 0 THEN ROUND((((t.entry_price - t.stop_loss) * t.quantity) / t.planned_risk_amount) * 100, 2) ELSE 0 END AS riskUsedPercentage,
       ${unrealizedMetricSelectSql()},
-      t.setup_id AS setupId, s.name AS setupName,
+      t.setup_id AS setupId, s.name AS setupName, t.entry_method_id AS entryMethodId, em.name AS entryMethodName,
       t.entry_reason AS entryReason, t.emotional_state AS emotionalState, t.confidence,
       t.notes, t.status, t.created_at AS createdAt
     FROM trades t
     LEFT JOIN setups s ON s.id = t.setup_id
+    LEFT JOIN entry_methods em ON em.id = t.entry_method_id
     LEFT JOIN (
       SELECT trade_id, SUM(quantity) AS exited_quantity
       FROM trade_exits

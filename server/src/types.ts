@@ -24,6 +24,8 @@ export type TradeRow = {
   readonly unrealizedPortfolioImpactPercentage: number;
   readonly setupId: number | null;
   readonly setupName: string | null;
+  readonly entryMethodId: number | null;
+  readonly entryMethodName: string | null;
   readonly entryReason: string;
   readonly emotionalState: string;
   readonly confidence: number;

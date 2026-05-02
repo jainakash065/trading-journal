@@ -362,6 +362,69 @@ describe("dashboard period metrics", () => {
     expect(dashboard.setupAnalytics).toEqual([]);
   });
 
+  it("calculates entry method analytics from period closed trades", () => {
+    const db: Database.Database = createDashboardDatabase();
+    createClosedTradeWithFinalR(db, { symbol: "STRONGWIN", finalR: 2, entryDate: "2026-04-01", exitDate: "2026-04-05", entryMethodId: 1 });
+    createClosedTradeWithFinalR(db, { symbol: "PIVOTWIN", finalR: 1, entryDate: "2026-04-02", exitDate: "2026-04-06", entryMethodId: 2 });
+    createClosedTradeWithFinalR(db, { symbol: "PIVOTLOSS", finalR: -1, entryDate: "2026-04-03", exitDate: "2026-04-07", entryMethodId: 2 });
+    createClosedTradeWithFinalR(db, { symbol: "NOENTRY", finalR: -0.5, entryDate: "2026-04-04", exitDate: "2026-04-08", entryMethodId: null });
+
+    const dashboard: Dashboard = buildDashboard(db, "last_month", dashboardToday);
+
+    expect(dashboard.entryMethodAnalytics).toEqual([
+      {
+        entryMethodName: "Strong start entry",
+        closedTrades: 1,
+        winRate: 100,
+        rExpectancy: 2,
+        averageWinningR: 2,
+        averageLosingR: 0,
+        medianR: 2,
+        pnl: 200
+      },
+      {
+        entryMethodName: "Normal pivot entry",
+        closedTrades: 2,
+        winRate: 50,
+        rExpectancy: 0,
+        averageWinningR: 1,
+        averageLosingR: 1,
+        medianR: 0,
+        pnl: 0
+      },
+      {
+        entryMethodName: "Unassigned",
+        closedTrades: 1,
+        winRate: 0,
+        rExpectancy: -0.5,
+        averageWinningR: 0,
+        averageLosingR: 0.5,
+        medianR: -0.5,
+        pnl: -50
+      }
+    ]);
+  });
+
+  it("calculates setup and entry method combination analytics", () => {
+    const db: Database.Database = createDashboardDatabase();
+    createClosedTradeWithFinalR(db, { symbol: "BREAKSTRONG", finalR: 2, entryDate: "2026-04-01", exitDate: "2026-04-05", setupId: 1, entryMethodId: 1 });
+    createClosedTradeWithFinalR(db, { symbol: "BREAKPIVOT", finalR: -1, entryDate: "2026-04-02", exitDate: "2026-04-06", setupId: 1, entryMethodId: 2 });
+    createClosedTradeWithFinalR(db, { symbol: "PULLSTRONG", finalR: 1, entryDate: "2026-04-03", exitDate: "2026-04-07", setupId: 2, entryMethodId: 1 });
+
+    const dashboard: Dashboard = buildDashboard(db, "last_month", dashboardToday);
+
+    expect(dashboard.setupEntryMethodAnalytics.map((row) => ({
+      setupName: row.setupName,
+      entryMethodName: row.entryMethodName,
+      closedTrades: row.closedTrades,
+      rExpectancy: row.rExpectancy
+    }))).toEqual([
+      { setupName: "Breakout", entryMethodName: "Strong start entry", closedTrades: 1, rExpectancy: 2 },
+      { setupName: "Pullback", entryMethodName: "Strong start entry", closedTrades: 1, rExpectancy: 1 },
+      { setupName: "Breakout", entryMethodName: "Normal pivot entry", closedTrades: 1, rExpectancy: -1 }
+    ]);
+  });
+
   it("infers capital history start date for existing journal data", () => {
     const db: Database.Database = createDashboardDatabase();
     createMtarTechTrade(db);
@@ -459,6 +522,7 @@ function createClosedTradeWithFinalR(
     readonly entryDate: string;
     readonly exitDate: string;
     readonly setupId?: number | null;
+    readonly entryMethodId?: number | null;
   }
 ): number {
   const entryPrice = 100;
@@ -476,6 +540,7 @@ function createClosedTradeWithFinalR(
     riskPercentage: 0.5,
     riskCapitalBase: 550000,
     setupId: params.setupId === undefined ? 1 : params.setupId,
+    entryMethodId: params.entryMethodId === undefined ? null : params.entryMethodId,
     entryReason: "R analytics test",
     emotionalState: "",
     confidence: 3,

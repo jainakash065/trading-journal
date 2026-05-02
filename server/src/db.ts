@@ -29,6 +29,11 @@ function migrate(db: Database.Database): void {
       name TEXT NOT NULL UNIQUE,
       active INTEGER NOT NULL DEFAULT 1
     );
+    CREATE TABLE IF NOT EXISTS entry_methods (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL UNIQUE,
+      active INTEGER NOT NULL DEFAULT 1
+    );
     CREATE TABLE IF NOT EXISTS checklist_items (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       label TEXT NOT NULL UNIQUE,
@@ -65,13 +70,15 @@ function migrate(db: Database.Database): void {
       risk_capital_base REAL NOT NULL DEFAULT 0,
       planned_risk_amount REAL NOT NULL,
       setup_id INTEGER,
+      entry_method_id INTEGER,
       entry_reason TEXT NOT NULL DEFAULT '',
       emotional_state TEXT NOT NULL DEFAULT '',
       confidence INTEGER NOT NULL DEFAULT 3,
       notes TEXT NOT NULL DEFAULT '',
       status TEXT NOT NULL DEFAULT 'open',
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (setup_id) REFERENCES setups(id)
+      FOREIGN KEY (setup_id) REFERENCES setups(id),
+      FOREIGN KEY (entry_method_id) REFERENCES entry_methods(id)
     );
     CREATE TABLE IF NOT EXISTS trade_checklist_responses (
       trade_id INTEGER NOT NULL,
@@ -131,6 +138,7 @@ function migrate(db: Database.Database): void {
   addRiskCapitalBaseColumn(db);
   addActiveStopLossColumn(db);
   addCurrentPriceColumns(db);
+  addEntryMethodColumn(db);
   backfillRiskCapitalBase(db);
   backfillActiveStopLoss(db);
 }
@@ -182,6 +190,14 @@ function addCurrentPriceColumns(db: Database.Database): void {
   }
 }
 
+function addEntryMethodColumn(db: Database.Database): void {
+  const columns = db.prepare("PRAGMA table_info(trades)").all() as { readonly name: string }[];
+  const hasColumn: boolean = columns.some((column: { readonly name: string }) => column.name === "entry_method_id");
+  if (!hasColumn) {
+    db.prepare("ALTER TABLE trades ADD COLUMN entry_method_id INTEGER").run();
+  }
+}
+
 function seed(db: Database.Database): void {
   const settings: readonly [string, string][] = [
     ["startingCapital", "550000"],
@@ -194,6 +210,9 @@ function seed(db: Database.Database): void {
   settings.forEach(([key, value]: [string, string]) => insertSetting.run(key, value));
   ["Breakout", "Pullback", "Continuation"].forEach((name: string) => {
     db.prepare("INSERT OR IGNORE INTO setups (name) VALUES (?)").run(name);
+  });
+  ["Strong start entry", "Normal pivot entry", "Oops day reversal entry"].forEach((name: string) => {
+    db.prepare("INSERT OR IGNORE INTO entry_methods (name) VALUES (?)").run(name);
   });
   ["Trend aligned", "Valid setup", "Stop defined", "Risk acceptable", "No chase"].forEach((label: string) => {
     db.prepare("INSERT OR IGNORE INTO checklist_items (label) VALUES (?)").run(label);

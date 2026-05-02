@@ -52,6 +52,8 @@ export type Trade = {
   readonly unrealizedPortfolioImpactPercentage: number;
   readonly setupId: number | null;
   readonly setupName: string | null;
+  readonly entryMethodId: number | null;
+  readonly entryMethodName: string | null;
   readonly entryReason: string;
   readonly emotionalState: string;
   readonly confidence: number;
@@ -120,6 +122,29 @@ export type SetupAnalyticsRow = {
   readonly pnl: number;
 };
 
+export type EntryMethodAnalyticsRow = {
+  readonly entryMethodName: string;
+  readonly closedTrades: number;
+  readonly winRate: number;
+  readonly rExpectancy: number;
+  readonly averageWinningR: number;
+  readonly averageLosingR: number;
+  readonly medianR: number;
+  readonly pnl: number;
+};
+
+export type SetupEntryMethodAnalyticsRow = {
+  readonly setupName: string;
+  readonly entryMethodName: string;
+  readonly closedTrades: number;
+  readonly winRate: number;
+  readonly rExpectancy: number;
+  readonly averageWinningR: number;
+  readonly averageLosingR: number;
+  readonly medianR: number;
+  readonly pnl: number;
+};
+
 export type Dashboard = {
   readonly period: DashboardPeriod;
   readonly capitalHistoryStartDate: string;
@@ -164,4 +189,6 @@ export type Dashboard = {
   readonly capitalCurve: readonly CapitalCurvePoint[];
   readonly lastNTrades: LastNTradesAnalytics;
   readonly setupAnalytics: readonly SetupAnalyticsRow[];
+  readonly entryMethodAnalytics: readonly EntryMethodAnalyticsRow[];
+  readonly setupEntryMethodAnalytics: readonly SetupEntryMethodAnalyticsRow[];
 };

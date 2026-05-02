@@ -2,6 +2,7 @@ import type { Dashboard, DashboardPeriodKey, LastNTradeCount, ReferenceItem, Set
 
 export type ReferenceData = {
   readonly setups: readonly ReferenceItem[];
+  readonly entryMethods: readonly ReferenceItem[];
   readonly checklistItems: readonly ReferenceItem[];
   readonly mistakeTags: readonly ReferenceItem[];
 };

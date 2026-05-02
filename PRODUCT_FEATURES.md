@@ -152,6 +152,7 @@ Implemented fields:
 - Risk percentage.
 - Risk capital base.
 - Setup.
+- Entry method.
 - Checklist responses.
 - Entry reason.
 - Emotional state before entry.
@@ -300,15 +301,19 @@ Future scope:
 - Checklist score.
 - Analytics comparing checklist-followed vs checklist-broken outcomes.
 
-## Setup Tracking
+## Setup And Entry Method Tracking
 
 Implemented:
 
+- Setup captures why the stock is on the list.
+- Entry method captures how the trade is entered.
 - User-defined setup list in Settings.
+- User-defined entry method list in Settings.
 - Setup selection on trades.
+- Entry method selection on trades.
 - Best setup and worst setup on dashboard for the selected period.
-- Setup shown in open/closed trade tables and trade detail.
-- Period-aware setup analytics on Dashboard:
+- Setup and entry method shown in open/closed trade tables and trade detail.
+- Period-aware setup analytics on Analytics:
   - Closed trade count.
   - Win rate.
   - R expectancy.
@@ -317,12 +322,26 @@ Implemented:
   - Median R.
   - Total closed-trade P&L.
   - Unassigned trade grouping.
+- Period-aware entry method analytics on Analytics:
+  - Closed trade count.
+  - Win rate.
+  - R expectancy.
+  - Average winning R.
+  - Average losing R.
+  - Median R.
+  - Total closed-trade P&L.
+  - Unassigned entry method grouping.
+- Period-aware setup + entry method combination analytics on Analytics:
+  - Shows whether edge comes from the setup, entry trigger, or their combination.
+  - Groups missing setup or entry method as Unassigned.
 
 Future scope:
 
 - Setup frequency.
 - Setup quality scoring.
 - Setup-specific review page.
+- Dedicated entry method analytics page.
+- Setup + entry method drill-down to matching trades.
 
 ## Mistake Tracking
 
@@ -433,6 +452,14 @@ Implemented:
   - Sorts setups by R expectancy, then trade count, then setup name.
   - Groups trades without a setup as Unassigned.
   - Shows closed trade count, win rate, R expectancy, average winning R, average losing R, median R, and total closed-trade P&L.
+- Entry Method Analytics:
+  - Period-aware table showing entry trigger quality from fully closed trades.
+  - Sorts entry methods by R expectancy, then trade count, then entry method name.
+  - Groups trades without an entry method as Unassigned.
+- Setup + Entry Method Analytics:
+  - Period-aware table showing combined setup and entry trigger quality.
+  - Sorts combinations by R expectancy, trade count, setup name, and entry method name.
+  - Helps separate setup edge from entry execution edge.
 - Period R Distribution:
   - Visual horizontal bar panel.
   - Shows R distribution for fully closed trades in the selected dashboard period.

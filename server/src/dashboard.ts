@@ -36,6 +36,23 @@ type PeriodCapital = {
   readonly changePercentage: number | null;
 };
 
+type RDistributionBucket = {
+  readonly label: string;
+  readonly count: number;
+};
+
+type RAnalytics = {
+  readonly winPercentage: number;
+  readonly lossPercentage: number;
+  readonly averageWinningR: number;
+  readonly averageLosingR: number;
+  readonly rExpectancy: number;
+  readonly medianR: number;
+  readonly largestWinnerR: number;
+  readonly expectancyWithoutLargestWinner: number;
+  readonly rDistribution: readonly RDistributionBucket[];
+};
+
 export type Dashboard = {
   readonly period: DashboardPeriod;
   readonly capitalHistoryStartDate: string;
@@ -53,10 +70,19 @@ export type Dashboard = {
   readonly periodOpenRealizedPnl: number;
   readonly periodClosedTrades: number;
   readonly winRate: number;
+  readonly winPercentage: number;
+  readonly lossPercentage: number;
   readonly averageWinner: number;
   readonly averageLoser: number;
   readonly profitFactor: number;
   readonly averageR: number;
+  readonly averageWinningR: number;
+  readonly averageLosingR: number;
+  readonly rExpectancy: number;
+  readonly medianR: number;
+  readonly largestWinnerR: number;
+  readonly expectancyWithoutLargestWinner: number;
+  readonly rDistribution: readonly RDistributionBucket[];
   readonly expectancy: number;
   readonly maxDrawdown: number;
   readonly openTrades: number;
@@ -84,6 +110,7 @@ export function buildDashboard(db: Database.Database, periodKey: DashboardPeriod
   const winners: readonly ClosedTradeMetric[] = periodTrades.filter((trade: ClosedTradeMetric) => trade.realizedPnl > 0);
   const losers: readonly ClosedTradeMetric[] = periodTrades.filter((trade: ClosedTradeMetric) => trade.realizedPnl < 0);
   const winRate: number = periodTrades.length > 0 ? round((winners.length / periodTrades.length) * 100) : 0;
+  const rAnalytics: RAnalytics = calculateRAnalytics(periodTrades);
   const averageWinner: number = average(winners.map((trade: ClosedTradeMetric) => trade.realizedPnl));
   const averageLoser: number = average(losers.map((trade: ClosedTradeMetric) => trade.realizedPnl));
   const grossProfit: number = winners.reduce((total: number, trade: ClosedTradeMetric) => total + trade.realizedPnl, 0);
@@ -107,10 +134,19 @@ export function buildDashboard(db: Database.Database, periodKey: DashboardPeriod
     periodOpenRealizedPnl: round(periodExits.filter((exit: RealizedExitMetric) => exit.tradeStatus !== "closed").reduce((total: number, exit: RealizedExitMetric) => total + exit.pnl, 0)),
     periodClosedTrades: periodTrades.length,
     winRate,
+    winPercentage: rAnalytics.winPercentage,
+    lossPercentage: rAnalytics.lossPercentage,
     averageWinner,
     averageLoser,
     profitFactor: grossLoss > 0 ? round(grossProfit / grossLoss) : round(grossProfit),
     averageR: average(periodTrades.map((trade: ClosedTradeMetric) => trade.finalR)),
+    averageWinningR: rAnalytics.averageWinningR,
+    averageLosingR: rAnalytics.averageLosingR,
+    rExpectancy: rAnalytics.rExpectancy,
+    medianR: rAnalytics.medianR,
+    largestWinnerR: rAnalytics.largestWinnerR,
+    expectancyWithoutLargestWinner: rAnalytics.expectancyWithoutLargestWinner,
+    rDistribution: rAnalytics.rDistribution,
     expectancy: average(periodTrades.map((trade: ClosedTradeMetric) => trade.realizedPnl)),
     maxDrawdown: calculateBookedMaxDrawdown({ startingCapital: periodCapital.startingCapital ?? 0, exits: periodExits }),
     openTrades: getCount(db, "SELECT COUNT(*) AS count FROM trades WHERE status != 'closed'"),
@@ -166,6 +202,110 @@ function average(values: readonly number[]): number {
     return 0;
   }
   return round(values.reduce((total: number, value: number) => total + value, 0) / values.length);
+}
+
+function averageRaw(values: readonly number[]): number {
+  if (values.length === 0) {
+    return 0;
+  }
+  return values.reduce((total: number, value: number) => total + value, 0) / values.length;
+}
+
+function calculateRAnalytics(trades: readonly ClosedTradeMetric[]): RAnalytics {
+  const rValues: readonly number[] = trades.map((trade: ClosedTradeMetric) => trade.finalR);
+  const winningRValues: readonly number[] = rValues.filter((value: number) => value > 0);
+  const losingRValues: readonly number[] = rValues.filter((value: number) => value < 0);
+  const winRateDecimal: number = trades.length > 0 ? winningRValues.length / trades.length : 0;
+  const lossRateDecimal: number = trades.length > 0 ? losingRValues.length / trades.length : 0;
+  const averageWinningRRaw: number = averageRaw(winningRValues);
+  const averageLosingRRaw: number = averageRaw(losingRValues.map((value: number) => Math.abs(value)));
+  return {
+    winPercentage: round(winRateDecimal * 100),
+    lossPercentage: round(lossRateDecimal * 100),
+    averageWinningR: round(averageWinningRRaw),
+    averageLosingR: round(averageLosingRRaw),
+    rExpectancy: round((winRateDecimal * averageWinningRRaw) - (lossRateDecimal * averageLosingRRaw)),
+    medianR: calculateMedian(rValues),
+    largestWinnerR: winningRValues.length > 0 ? round(Math.max(...winningRValues)) : 0,
+    expectancyWithoutLargestWinner: calculateExpectancyWithoutLargestWinner(rValues),
+    rDistribution: calculateRDistribution(rValues)
+  };
+}
+
+function calculateRExpectancy(params: {
+  readonly winRateDecimal: number;
+  readonly lossRateDecimal: number;
+  readonly averageWinningR: number;
+  readonly averageLosingR: number;
+}): number {
+  return round((params.winRateDecimal * params.averageWinningR) - (params.lossRateDecimal * params.averageLosingR));
+}
+
+function calculateMedian(values: readonly number[]): number {
+  if (values.length === 0) {
+    return 0;
+  }
+  const sorted: readonly number[] = [...values].sort((a: number, b: number) => a - b);
+  const middle: number = Math.floor(sorted.length / 2);
+  if (sorted.length % 2 === 1) {
+    return round(sorted[middle]);
+  }
+  return round((sorted[middle - 1] + sorted[middle]) / 2);
+}
+
+function calculateExpectancyWithoutLargestWinner(values: readonly number[]): number {
+  const largestWinner: number = Math.max(0, ...values.filter((value: number) => value > 0));
+  if (largestWinner === 0) {
+    return calculateRAnalyticsFromValues(values).rExpectancy;
+  }
+  const removed: number[] = [...values];
+  removed.splice(removed.indexOf(largestWinner), 1);
+  return calculateRAnalyticsFromValues(removed).rExpectancy;
+}
+
+function calculateRAnalyticsFromValues(values: readonly number[]): Pick<RAnalytics, "rExpectancy"> {
+  const winningRValues: readonly number[] = values.filter((value: number) => value > 0);
+  const losingRValues: readonly number[] = values.filter((value: number) => value < 0);
+  const winRateDecimal: number = values.length > 0 ? winningRValues.length / values.length : 0;
+  const lossRateDecimal: number = values.length > 0 ? losingRValues.length / values.length : 0;
+  const averageWinningR: number = averageRaw(winningRValues);
+  const averageLosingR: number = averageRaw(losingRValues.map((value: number) => Math.abs(value)));
+  return { rExpectancy: calculateRExpectancy({ winRateDecimal, lossRateDecimal, averageWinningR, averageLosingR }) };
+}
+
+function calculateRDistribution(values: readonly number[]): readonly RDistributionBucket[] {
+  const buckets: RDistributionBucket[] = [
+    { label: "<= -1R", count: 0 },
+    { label: "-1R to 0R", count: 0 },
+    { label: "0R to 1R", count: 0 },
+    { label: "1R to 3R", count: 0 },
+    { label: "3R to 5R", count: 0 },
+    { label: "> 5R", count: 0 }
+  ];
+  values.forEach((value: number) => {
+    const bucketIndex: number = getRDistributionIndex(value);
+    buckets[bucketIndex] = { ...buckets[bucketIndex], count: buckets[bucketIndex].count + 1 };
+  });
+  return buckets;
+}
+
+function getRDistributionIndex(value: number): number {
+  if (value <= -1) {
+    return 0;
+  }
+  if (value < 0) {
+    return 1;
+  }
+  if (value < 1) {
+    return 2;
+  }
+  if (value < 3) {
+    return 3;
+  }
+  if (value <= 5) {
+    return 4;
+  }
+  return 5;
 }
 
 function round(value: number): number {

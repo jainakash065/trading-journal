@@ -235,6 +235,17 @@ function DashboardView(props: {
           <Metric label="Max drawdown" value={money(d.maxDrawdown)} tone="bad" />
         </div>
       </section>
+      <section className="dashboard-section">
+        <h3>Asymmetric Edge</h3>
+        <div className="metric-grid">
+          <Metric label="R Expectancy" value={formatR(d.rExpectancy)} tone={getNumberTone(d.rExpectancy)} />
+          <Metric label="Avg Winning R" value={formatR(d.averageWinningR)} tone="good" />
+          <Metric label="Avg Losing R" value={formatR(d.averageLosingR)} tone="bad" />
+          <Metric label="Median R" value={formatR(d.medianR)} tone={getNumberTone(d.medianR)} />
+          <Metric label="Largest Winner R" value={formatR(d.largestWinnerR)} tone="good" />
+          <Metric label="Expectancy Ex-Largest" value={formatR(d.expectancyWithoutLargestWinner)} tone={getNumberTone(d.expectancyWithoutLargestWinner)} />
+        </div>
+      </section>
       <div className="split">
         <section className="panel">
           <h2>Execution Quality</h2>
@@ -249,6 +260,12 @@ function DashboardView(props: {
           <h2>Mistakes</h2>
           {d.mistakeFrequency.length === 0 ? <p className="muted">No reviewed mistakes in this period.</p> : d.mistakeFrequency.map((item) => (
             <div className="row" key={item.label}><span>{item.label}</span><strong>{item.count}</strong></div>
+          ))}
+        </section>
+        <section className="panel">
+          <h2>R Distribution</h2>
+          {d.rDistribution.map((bucket) => (
+            <div className="row" key={bucket.label}><span>{bucket.label}</span><strong>{bucket.count}</strong></div>
           ))}
         </section>
       </div>
@@ -886,6 +903,10 @@ function formatSignedPercent(value: number): string {
     return `+${formatPercent(value)}`;
   }
   return formatPercent(value);
+}
+
+function formatR(value: number): string {
+  return `${value.toFixed(2)}R`;
 }
 
 function formatDuration(durationDays: number): string {

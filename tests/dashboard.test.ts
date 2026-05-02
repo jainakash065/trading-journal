@@ -93,6 +93,48 @@ describe("dashboard period metrics", () => {
     expect(dashboard.maxDrawdown).toBe(-25);
   });
 
+  it("calculates R expectancy and R distribution from closed trades", () => {
+    const db: Database.Database = createDashboardDatabase();
+    createClosedTradeWithFinalR(db, { symbol: "AVANTI", finalR: -1, entryDate: "2026-04-01", exitDate: "2026-04-03" });
+    createClosedTradeWithFinalR(db, { symbol: "GLENMARK", finalR: 0.18, entryDate: "2026-04-02", exitDate: "2026-04-04" });
+    createClosedTradeWithFinalR(db, { symbol: "NATIONALUM1", finalR: -1, entryDate: "2026-04-03", exitDate: "2026-04-05" });
+    createClosedTradeWithFinalR(db, { symbol: "DATAPATTNS", finalR: -1, entryDate: "2026-04-04", exitDate: "2026-04-06" });
+    createClosedTradeWithFinalR(db, { symbol: "NATIONALUM2", finalR: 0.76, entryDate: "2026-04-05", exitDate: "2026-04-07" });
+    createClosedTradeWithFinalR(db, { symbol: "MTARTECH", finalR: 11.23, entryDate: "2026-04-06", exitDate: "2026-04-08" });
+    createClosedTradeWithFinalR(db, { symbol: "TATAMOTORS", finalR: -0.54, entryDate: "2026-04-07", exitDate: "2026-04-09" });
+    createClosedTradeWithFinalR(db, { symbol: "OLECTRA", finalR: 0.32, entryDate: "2026-04-08", exitDate: "2026-04-10" });
+
+    const dashboard: Dashboard = buildDashboard(db, "last_month", dashboardToday);
+
+    expect(dashboard.winPercentage).toBe(50);
+    expect(dashboard.lossPercentage).toBe(50);
+    expect(dashboard.averageWinningR).toBe(3.12);
+    expect(dashboard.averageLosingR).toBe(0.89);
+    expect(dashboard.rExpectancy).toBe(1.12);
+    expect(dashboard.medianR).toBe(-0.18);
+    expect(dashboard.largestWinnerR).toBe(11.23);
+    expect(dashboard.expectancyWithoutLargestWinner).toBe(-0.33);
+    expect(dashboard.rDistribution).toEqual([
+      { label: "<= -1R", count: 3 },
+      { label: "-1R to 0R", count: 1 },
+      { label: "0R to 1R", count: 3 },
+      { label: "1R to 3R", count: 0 },
+      { label: "3R to 5R", count: 0 },
+      { label: "> 5R", count: 1 }
+    ]);
+  });
+
+  it("calculates median R for an odd number of closed trades", () => {
+    const db: Database.Database = createDashboardDatabase();
+    createClosedTradeWithFinalR(db, { symbol: "ODDLOSS", finalR: -1, entryDate: "2026-04-01", exitDate: "2026-04-03" });
+    createClosedTradeWithFinalR(db, { symbol: "ODDMID", finalR: 0.5, entryDate: "2026-04-02", exitDate: "2026-04-04" });
+    createClosedTradeWithFinalR(db, { symbol: "ODDWIN", finalR: 2, entryDate: "2026-04-03", exitDate: "2026-04-05" });
+
+    const dashboard: Dashboard = buildDashboard(db, "last_month", dashboardToday);
+
+    expect(dashboard.medianR).toBe(0.5);
+  });
+
   it("infers capital history start date for existing journal data", () => {
     const db: Database.Database = createDashboardDatabase();
     createMtarTechTrade(db);
@@ -178,6 +220,41 @@ function createWinningTradeWithEarlyPartialLoss(db: Database.Database): number {
   });
   addExit(db, createExitInput({ tradeId, exitDate: "2026-04-10", exitPrice: 95, quantity: 5 }));
   addExit(db, createExitInput({ tradeId, exitDate: "2026-04-20", exitPrice: 120, quantity: 5 }));
+  db.prepare("UPDATE settings SET value = '2026-04-01' WHERE key = 'capitalHistoryStartDate'").run();
+  return tradeId;
+}
+
+function createClosedTradeWithFinalR(
+  db: Database.Database,
+  params: {
+    readonly symbol: string;
+    readonly finalR: number;
+    readonly entryDate: string;
+    readonly exitDate: string;
+  }
+): number {
+  const entryPrice = 100;
+  const quantity = 10;
+  const stopLoss = 90;
+  const exitPrice = entryPrice + (params.finalR * ((entryPrice - stopLoss) * quantity)) / quantity;
+  const tradeId: number = createTrade(db, {
+    symbol: params.symbol,
+    market: "India",
+    direction: "Buy",
+    entryDate: params.entryDate,
+    entryPrice,
+    quantity,
+    stopLoss,
+    riskPercentage: 0.5,
+    riskCapitalBase: 550000,
+    setupId: 1,
+    entryReason: "R analytics test",
+    emotionalState: "",
+    confidence: 3,
+    notes: "",
+    checklistResponses: []
+  });
+  addExit(db, createExitInput({ tradeId, exitDate: params.exitDate, exitPrice, quantity }));
   db.prepare("UPDATE settings SET value = '2026-04-01' WHERE key = 'capitalHistoryStartDate'").run();
   return tradeId;
 }

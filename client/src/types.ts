@@ -72,6 +72,11 @@ export type DashboardPeriod = {
   readonly endDate: string;
 };
 
+export type RDistributionBucket = {
+  readonly label: string;
+  readonly count: number;
+};
+
 export type Dashboard = {
   readonly period: DashboardPeriod;
   readonly capitalHistoryStartDate: string;
@@ -89,10 +94,19 @@ export type Dashboard = {
   readonly periodOpenRealizedPnl: number;
   readonly periodClosedTrades: number;
   readonly winRate: number;
+  readonly winPercentage: number;
+  readonly lossPercentage: number;
   readonly averageWinner: number;
   readonly averageLoser: number;
   readonly profitFactor: number;
   readonly averageR: number;
+  readonly averageWinningR: number;
+  readonly averageLosingR: number;
+  readonly rExpectancy: number;
+  readonly medianR: number;
+  readonly largestWinnerR: number;
+  readonly expectancyWithoutLargestWinner: number;
+  readonly rDistribution: readonly RDistributionBucket[];
   readonly expectancy: number;
   readonly maxDrawdown: number;
   readonly openTrades: number;

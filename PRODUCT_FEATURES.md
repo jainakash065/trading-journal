@@ -164,6 +164,7 @@ Implemented behaviors:
 - Default date to today.
 - Default risk percentage from settings.
 - Default risk capital base to current realized capital.
+- New Trade is treated as the primary journal action in the sidebar, visually separated from normal navigation destinations.
 - Save button disables while saving to avoid duplicate trade creation.
 - Entry screenshots can be appended during edit.
 - Planned risk is read-only/derived rather than manually typed.

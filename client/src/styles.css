@@ -49,6 +49,31 @@ nav {
   gap: 8px;
 }
 
+.sidebar-cta {
+  align-items: center;
+  background: #d7a84f;
+  border: 0;
+  border-radius: 8px;
+  color: #122620;
+  cursor: pointer;
+  display: flex;
+  font-weight: 900;
+  gap: 10px;
+  justify-content: center;
+  min-height: 46px;
+  padding: 12px 14px;
+  width: 100%;
+}
+
+.sidebar-cta svg {
+  height: 18px;
+  width: 18px;
+}
+
+.sidebar-cta.active, .sidebar-cta:hover {
+  background: #f0c86f;
+}
+
 .nav-button {
   align-items: center;
   background: transparent;

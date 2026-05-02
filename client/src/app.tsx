@@ -135,10 +135,13 @@ export function App(): JSX.Element {
           <p className="eyebrow">Local journal</p>
           <h1>Trading Journal</h1>
         </div>
+        <button className={view === "new" ? "sidebar-cta active" : "sidebar-cta"} onClick={() => navigate("new")} type="button">
+          <Plus />
+          <span>New Trade</span>
+        </button>
         <nav>
           <NavButton active={view === "dashboard"} icon={<BarChart3 />} label="Dashboard" onClick={() => navigate("dashboard")} />
           <NavButton active={view === "analytics"} icon={<ChartNoAxesCombined />} label="Analytics" onClick={() => navigate("analytics")} />
-          <NavButton active={view === "new"} icon={<Plus />} label="New Trade" onClick={() => navigate("new")} />
           <NavButton active={view === "open"} icon={<Activity />} label="Open Trades" onClick={() => navigate("open")} />
           <NavButton active={view === "closed"} icon={<BookOpen />} label="Closed Trades" onClick={() => navigate("closed")} />
           <NavButton active={view === "settings"} icon={<SettingsIcon />} label="Settings" onClick={() => navigate("settings")} />

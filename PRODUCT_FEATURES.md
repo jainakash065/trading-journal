@@ -75,6 +75,9 @@ Current behavior:
 Future scope:
 
 - Manual deposits and withdrawals.
+- Net realized P&L after brokerage, STT, exchange charges, GST, stamp duty, and other fees.
+- Gross vs net P&L comparison per exit, trade, period, setup, and dashboard.
+- Contract-note or broker-file reconciliation for charges and taxes.
 - Mark-to-market unrealized P&L.
 - Portfolio-level open position valuation.
 - Capital allocation by setup, month, and financial year.
@@ -509,6 +512,7 @@ Future scope:
 - Import backup on another computer.
 - Restore app state exactly from backup.
 - CSV export for trades and exits.
+- Broker tradebook/contract-note import for validating trades and calculating charges.
 
 Example backup name:
 
@@ -529,6 +533,7 @@ trading-journal-backup-2026-05-01.zip
 - Calendar view.
 - Unrealized P&L tracking.
 - Broker contract note import.
+- Brokerage, taxes, charges, and net P&L tracking.
 - Chart annotations.
 - Advanced expectancy analytics.
 - Position sizing simulator.

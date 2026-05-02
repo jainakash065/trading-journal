@@ -62,6 +62,11 @@ Implemented:
 - Current open risk based on active stop loss and remaining quantity.
 - Trade-level portfolio impact percentage:
   - `portfolioImpactPercentage = realizedPnl / riskCapitalBase * 100`
+- Manual current price for open/partially exited trades.
+- Trade-level unrealized metrics from manual current price:
+  - Unrealized P&L in money.
+  - Unrealized R.
+  - Unrealized portfolio impact percentage.
 - Capital history start date:
   - Stored as `capitalHistoryStartDate`.
   - Inferred from earliest trade/ledger date for existing data.
@@ -71,7 +76,7 @@ Implemented:
 Current behavior:
 
 - Capital updates use realized P&L only.
-- Unrealized mark-to-market is not included yet.
+- Unrealized values are shown for open trades but do not affect realized capital, capital ledger, booked P&L, win rate, expectancy, or dashboard period performance.
 - Period capital cards show `-` when the selected period is before capital tracking started.
 
 Future scope:
@@ -82,7 +87,8 @@ Future scope:
 - Contract-note or broker-file reconciliation for charges and taxes.
 - Capital gains tax tracking for intraday and short-term holdings.
 - No LTCG workflow needed for the primary use case because trades are intraday or held only for a few days.
-- Mark-to-market unrealized P&L.
+- Live/automatic mark-to-market price updates.
+- Dashboard-level unrealized P&L and total open portfolio valuation.
 - Portfolio-level open position valuation.
 - Capital allocation by setup, month, and financial year.
 - Capital curve chart in the UI.
@@ -117,6 +123,12 @@ Implemented:
   - `max(0, entryPrice - activeStopLoss) * remainingQuantity`
   - Uses active stop loss, not initial stop loss.
   - Breakeven or trailed-above-entry stops contribute zero open risk.
+- Unrealized open-position metrics:
+  - `unrealizedPnl = (currentPrice - entryPrice) * remainingQuantity`
+  - `unrealizedR = unrealizedPnl / ((entryPrice - stopLoss) * originalQuantity)`
+  - `unrealizedPortfolioImpactPercentage = unrealizedPnl / riskCapitalBase * 100`
+  - Use remaining quantity only.
+  - Use original stop loss for R denominator, not active stop loss.
 
 Future scope:
 
@@ -448,6 +460,9 @@ Implemented columns:
 - Portfolio impact percentage from realized exits.
 - Realized P&L.
 - Final R.
+- Unrealized P&L.
+- Unrealized R.
+- Unrealized impact percentage.
 - Status.
 
 ### Closed Trades
@@ -479,6 +494,8 @@ Implemented:
 - P&L summary.
 - R summary.
 - Capital and portfolio impact.
+- Manual current price and current price updated timestamp.
+- Unrealized P&L, unrealized R, and unrealized impact percentage.
 - Planned risk, actual risk, risk used.
 - Initial stop loss, active stop loss, and current open risk.
 - Position value and position percentage.
@@ -489,6 +506,7 @@ Implemented:
 - Review form.
 - Active stop quick edit.
 - Move active stop to breakeven action.
+- Current price quick edit.
 
 Drawer usability:
 
@@ -579,7 +597,8 @@ Recently left out of current scope:
 - Stop movement history and stop movement notes.
 - Locked-profit display when active stop is above entry.
 - Including partial/open trades in expectancy analytics.
-- Unrealized/mark-to-market dashboard metrics.
+- Dashboard-level unrealized/mark-to-market metrics.
+- Live market price integration.
 - Brokerage, charges, and tax-adjusted net P&L calculations.
 - Full backup/export/import workflow.
 
@@ -592,7 +611,7 @@ Recently left out of current scope:
 - Monthly review page.
 - Weekly review page.
 - Calendar view.
-- Unrealized P&L tracking.
+- Live market price integration for unrealized P&L.
 - Broker contract note import.
 - Brokerage, taxes, charges, and net P&L tracking.
 - Intraday/STCG tax estimate tracking, with LTCG out of scope for now.

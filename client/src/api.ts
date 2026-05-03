@@ -36,9 +36,12 @@ export async function apiDelete(path: string): Promise<void> {
   await parseResponse<{ readonly ok: boolean }>(response);
 }
 
-export async function uploadScreenshot(path: string, file: File): Promise<void> {
+export async function uploadScreenshots(path: string, files: readonly File[]): Promise<void> {
+  if (files.length === 0) {
+    return;
+  }
   const body: FormData = new FormData();
-  body.append("screenshot", file);
+  files.forEach((file: File) => body.append("screenshots", file));
   const response: Response = await fetch(path, { method: "POST", body });
   await parseResponse<{ readonly ok: boolean }>(response);
 }

@@ -105,6 +105,16 @@ function createUpload(folder: string): multer.Multer {
   });
 }
 
+function getUploadedScreenshots(request: Request): readonly Express.Multer.File[] {
+  if (Array.isArray(request.files)) {
+    return request.files;
+  }
+  if (request.files) {
+    return [...(request.files.screenshot ?? []), ...(request.files.screenshots ?? [])];
+  }
+  return request.file ? [request.file] : [];
+}
+
 export function createApp(): express.Express {
   const app = express();
   app.use(cors());
@@ -211,21 +221,23 @@ export function createApp(): express.Express {
     updateReview(db, Number(request.params.id), reviewSchema.parse(request.body));
     response.json({ ok: true });
   });
-  app.post("/api/trades/:id/screenshots/entry", createUpload(entryScreenshotDir).single("screenshot"), (request: Request, response: Response) => {
-    if (!request.file) {
+  app.post("/api/trades/:id/screenshots/entry", createUpload(entryScreenshotDir).fields([{ name: "screenshot", maxCount: 20 }, { name: "screenshots", maxCount: 20 }]), (request: Request, response: Response) => {
+    const files: readonly Express.Multer.File[] = getUploadedScreenshots(request);
+    if (files.length === 0) {
       response.status(400).json({ message: "Screenshot is required" });
       return;
     }
-    saveScreenshot(db, { tradeId: Number(request.params.id), exitId: null, type: "entry", filePath: request.file.path, originalName: request.file.originalname });
-    response.status(201).json({ ok: true });
+    files.forEach((file: Express.Multer.File) => saveScreenshot(db, { tradeId: Number(request.params.id), exitId: null, type: "entry", filePath: file.path, originalName: file.originalname }));
+    response.status(201).json({ ok: true, count: files.length });
   });
-  app.post("/api/trades/:id/exits/:exitId/screenshots", createUpload(exitScreenshotDir).single("screenshot"), (request: Request, response: Response) => {
-    if (!request.file) {
+  app.post("/api/trades/:id/exits/:exitId/screenshots", createUpload(exitScreenshotDir).fields([{ name: "screenshot", maxCount: 20 }, { name: "screenshots", maxCount: 20 }]), (request: Request, response: Response) => {
+    const files: readonly Express.Multer.File[] = getUploadedScreenshots(request);
+    if (files.length === 0) {
       response.status(400).json({ message: "Screenshot is required" });
       return;
     }
-    saveScreenshot(db, { tradeId: Number(request.params.id), exitId: Number(request.params.exitId), type: "exit", filePath: request.file.path, originalName: request.file.originalname });
-    response.status(201).json({ ok: true });
+    files.forEach((file: Express.Multer.File) => saveScreenshot(db, { tradeId: Number(request.params.id), exitId: Number(request.params.exitId), type: "exit", filePath: file.path, originalName: file.originalname }));
+    response.status(201).json({ ok: true, count: files.length });
   });
   app.get("/api/dashboard", (request: Request, response: Response) => {
     response.json(buildDashboard(db, parseDashboardPeriodKey(request.query.period), new Date(), parseLastNTradeCount(request.query.lastN)));

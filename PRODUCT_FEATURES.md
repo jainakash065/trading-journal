@@ -158,7 +158,7 @@ Implemented fields:
 - Emotional state before entry.
 - Confidence level.
 - Notes.
-- Entry screenshot upload.
+- Entry screenshot upload, including selecting multiple screenshots at once.
 
 Implemented behaviors:
 
@@ -191,7 +191,7 @@ Implemented fields:
 - Exit price.
 - Quantity exited.
 - Exit reason.
-- Exit screenshot.
+- Exit screenshots, including selecting multiple screenshots at once.
 - Exit notes.
 - Emotional state during exit.
 - P&L for that exit.
@@ -272,6 +272,7 @@ Implemented:
 - Entry screenshot upload.
 - Exit screenshot upload.
 - Multiple screenshots per trade/exit through append behavior.
+- Multi-select screenshot upload for adding several timeframe screenshots in one action.
 - Screenshots are associated by trade ID and optional exit ID, so screenshots for repeated trades in the same stock do not collide.
 - Thumbnail preview inside trade detail.
 - Click any screenshot thumbnail to open a large in-app preview modal.
@@ -280,7 +281,6 @@ Implemented:
 
 Future scope:
 
-- Multi-select screenshot upload for adding several timeframe screenshots in one action.
 - Screenshot zoom/pan.
 - Screenshot annotations.
 - Screenshot replacement without deleting trade/exit.

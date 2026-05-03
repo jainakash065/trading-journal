@@ -1,6 +1,6 @@
 import { Activity, BarChart3, BookOpen, ChartNoAxesCombined, ClipboardCheck, IndianRupee, Pencil, Plus, Settings as SettingsIcon, Trash2, X } from "lucide-react";
 import { FormEvent, type PointerEvent, useEffect, useState } from "react";
-import { apiDelete, apiGet, apiSend, endpoints, type AppData, type ClosedTradeFilters, type ClosedTradeOutcomeFilter, type ReferenceData, uploadScreenshot } from "./api";
+import { apiDelete, apiGet, apiSend, endpoints, type AppData, type ClosedTradeFilters, type ClosedTradeOutcomeFilter, type ReferenceData, uploadScreenshots } from "./api";
 import type { CapitalCurvePoint, Dashboard, DashboardPeriodKey, EntryMethodAnalyticsRow, LastNTradeCount, PagedTrades, RDistributionBucket, Settings, SetupAnalyticsRow, SetupEntryMethodAnalyticsRow, Trade, TradeExit } from "./types";
 
 type View = "dashboard" | "analytics" | "new" | "open" | "closed" | "settings";
@@ -670,7 +670,7 @@ function NewTradeView(props: { readonly data: AppData; readonly onSaved: () => P
     notes: ""
   });
   const [checks, setChecks] = useState<Record<number, boolean>>({});
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<readonly File[]>([]);
   const [saving, setSaving] = useState(false);
   const riskAmount = Number(form.riskCapitalBase) * (Number(form.riskPercentage) / 100);
   const riskPerShare = Math.max(Number(form.entryPrice) - Number(form.stopLoss), 0);
@@ -702,9 +702,7 @@ function NewTradeView(props: { readonly data: AppData; readonly onSaved: () => P
         notes: form.notes,
         checklistResponses: props.data.referenceData.checklistItems.map((item) => ({ itemId: item.id, checked: Boolean(checks[item.id]), notes: "" }))
       });
-      if (file) {
-        await uploadScreenshot(`/api/trades/${response.id}/screenshots/entry`, file);
-      }
+      await uploadScreenshots(`/api/trades/${response.id}/screenshots/entry`, files);
       await props.onSaved();
     } finally {
       setSaving(false);
@@ -735,7 +733,7 @@ function NewTradeView(props: { readonly data: AppData; readonly onSaved: () => P
         <label className="wide"><span>Entry reason</span><textarea value={form.entryReason} onChange={(event) => setForm({ ...form, entryReason: event.target.value })} /></label>
         <label className="wide"><span>Emotional state</span><textarea value={form.emotionalState} onChange={(event) => setForm({ ...form, emotionalState: event.target.value })} /></label>
         <label className="wide"><span>Notes</span><textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} /></label>
-        <label className="wide file-drop"><span>Entry screenshot</span><input type="file" accept="image/*" onChange={(event) => setFile(event.target.files?.[0] ?? null)} /></label>
+        <label className="wide file-drop"><span>Entry screenshots</span><input type="file" accept="image/*" multiple onChange={(event) => setFiles(filesFromInput(event.target.files))} /><small>{formatSelectedFileCount(files)}</small></label>
         <section className="wide checklist">
           <h2><ClipboardCheck size={18} /> Checklist</h2>
           {props.data.referenceData.checklistItems.map((item) => (
@@ -849,7 +847,7 @@ function TradesTable(props: { readonly mode: "open" | "closed"; readonly trades:
 
 function TradeDetail(props: { readonly tradeId: number; readonly referenceData: ReferenceData; readonly onClose: () => void; readonly onChanged: () => Promise<void>; readonly onDeleted: () => Promise<void> }): JSX.Element {
   const [detail, setDetail] = useState<{ readonly trade: Trade; readonly exits: readonly TradeExit[]; readonly summary: Trade["summary"]; readonly screenshots: readonly { readonly id: number; readonly type: string; readonly url: string; readonly exitId: number | null }[]; readonly checklistResponses: readonly { readonly itemId: number; readonly checked: boolean; readonly notes: string }[]; readonly review?: Record<string, string | number> } | null>(null);
-  const [exitFile, setExitFile] = useState<File | null>(null);
+  const [exitFiles, setExitFiles] = useState<readonly File[]>([]);
   const [exitFileInputKey, setExitFileInputKey] = useState(0);
   const [exitForm, setExitForm] = useState<ExitFormState>(createEmptyExitForm);
   const [addExitSaving, setAddExitSaving] = useState(false);
@@ -858,12 +856,12 @@ function TradeDetail(props: { readonly tradeId: number; readonly referenceData: 
   const [currentPrice, setCurrentPrice] = useState("");
   const [currentPriceSaving, setCurrentPriceSaving] = useState(false);
   const [editTradeOpen, setEditTradeOpen] = useState(false);
-  const [editTradeFile, setEditTradeFile] = useState<File | null>(null);
+  const [editTradeFiles, setEditTradeFiles] = useState<readonly File[]>([]);
   const [editTradeForm, setEditTradeForm] = useState<TradeFormState | null>(null);
   const [editTradeSaving, setEditTradeSaving] = useState(false);
   const [editTradeChecks, setEditTradeChecks] = useState<Record<number, boolean>>({});
   const [editingExitId, setEditingExitId] = useState<number | null>(null);
-  const [editExitFile, setEditExitFile] = useState<File | null>(null);
+  const [editExitFiles, setEditExitFiles] = useState<readonly File[]>([]);
   const [editExitForm, setEditExitForm] = useState<ExitFormState | null>(null);
   const [editExitSaving, setEditExitSaving] = useState(false);
   const [review, setReview] = useState({ followedPlan: "1", ruleScore: "5", disciplineScore: "5", wentWell: "", wentWrong: "", lesson: "", repeatNextTime: "", avoidNextTime: "", mistakeIds: [] as number[] });
@@ -943,11 +941,9 @@ function TradeDetail(props: { readonly tradeId: number; readonly referenceData: 
     setAddExitSaving(true);
     try {
       const response = await apiSend<{ readonly id: number }>(`/api/trades/${props.tradeId}/exits`, "POST", { ...exitForm, exitPrice: Number(exitForm.exitPrice), quantity: Number(exitForm.quantity) });
-      if (exitFile) {
-        await uploadScreenshot(`/api/trades/${props.tradeId}/exits/${response.id}/screenshots`, exitFile);
-      }
+      await uploadScreenshots(`/api/trades/${props.tradeId}/exits/${response.id}/screenshots`, exitFiles);
       setExitForm(createEmptyExitForm());
-      setExitFile(null);
+      setExitFiles([]);
       setExitFileInputKey((key: number) => key + 1);
       await load();
       await props.onChanged();
@@ -1038,11 +1034,9 @@ function TradeDetail(props: { readonly tradeId: number; readonly referenceData: 
         notes: editTradeForm.notes,
         checklistResponses: props.referenceData.checklistItems.map((item) => ({ itemId: item.id, checked: Boolean(editTradeChecks[item.id]), notes: "" }))
       });
-      if (editTradeFile) {
-        await uploadScreenshot(`/api/trades/${props.tradeId}/screenshots/entry`, editTradeFile);
-      }
+      await uploadScreenshots(`/api/trades/${props.tradeId}/screenshots/entry`, editTradeFiles);
       setEditTradeOpen(false);
-      setEditTradeFile(null);
+      setEditTradeFiles([]);
       await load();
       await props.onChanged();
     } finally {
@@ -1051,7 +1045,7 @@ function TradeDetail(props: { readonly tradeId: number; readonly referenceData: 
   };
   const openExitEditor = (exit: TradeExit): void => {
     setEditingExitId(exit.id);
-    setEditExitFile(null);
+    setEditExitFiles([]);
     setEditExitForm({
       exitDate: exit.exitDate,
       exitPrice: String(exit.exitPrice),
@@ -1069,11 +1063,9 @@ function TradeDetail(props: { readonly tradeId: number; readonly referenceData: 
     setEditExitSaving(true);
     try {
       await apiSend(`/api/trades/${props.tradeId}/exits/${editingExitId}`, "PUT", { ...editExitForm, exitPrice: Number(editExitForm.exitPrice), quantity: Number(editExitForm.quantity) });
-      if (editExitFile) {
-        await uploadScreenshot(`/api/trades/${props.tradeId}/exits/${editingExitId}/screenshots`, editExitFile);
-      }
+      await uploadScreenshots(`/api/trades/${props.tradeId}/exits/${editingExitId}/screenshots`, editExitFiles);
       setEditingExitId(null);
-      setEditExitFile(null);
+      setEditExitFiles([]);
       await load();
       await props.onChanged();
     } finally {
@@ -1230,7 +1222,7 @@ function TradeDetail(props: { readonly tradeId: number; readonly referenceData: 
           <label><span>Entry reason</span><textarea value={editTradeForm.entryReason} onChange={(event) => setEditTradeForm({ ...editTradeForm, entryReason: event.target.value })} /></label>
           <label><span>Emotional state</span><textarea value={editTradeForm.emotionalState} onChange={(event) => setEditTradeForm({ ...editTradeForm, emotionalState: event.target.value })} /></label>
           <label><span>Notes</span><textarea value={editTradeForm.notes} onChange={(event) => setEditTradeForm({ ...editTradeForm, notes: event.target.value })} /></label>
-          <label><span>Append entry screenshot</span><input type="file" accept="image/*" onChange={(event) => setEditTradeFile(event.target.files?.[0] ?? null)} /></label>
+          <label><span>Append entry screenshots</span><input type="file" accept="image/*" multiple onChange={(event) => setEditTradeFiles(filesFromInput(event.target.files))} /><small>{formatSelectedFileCount(editTradeFiles)}</small></label>
           <div className="checklist">{props.referenceData.checklistItems.map((item) => <label className="check-row" key={item.id}><input checked={Boolean(editTradeChecks[item.id])} type="checkbox" onChange={(event) => setEditTradeChecks({ ...editTradeChecks, [item.id]: event.target.checked })} />{item.label}</label>)}</div>
           <div className="form-actions"><button className="primary" disabled={editTradeSaving} type="submit">{editTradeSaving ? "Saving..." : "Save Trade Changes"}</button><button className="ghost" type="button" onClick={() => setEditTradeOpen(false)}>Cancel</button></div>
         </form>
@@ -1241,7 +1233,7 @@ function TradeDetail(props: { readonly tradeId: number; readonly referenceData: 
         <Input label="Exit price" type="number" value={exitForm.exitPrice} onChange={(value) => setExitForm({ ...exitForm, exitPrice: value })} />
         <Input label="Quantity" type="number" value={exitForm.quantity} onChange={(value) => setExitForm({ ...exitForm, quantity: value })} />
         <Input label="Reason" value={exitForm.reason} onChange={(value) => setExitForm({ ...exitForm, reason: value })} />
-        <label><span>Exit screenshot</span><input key={exitFileInputKey} type="file" accept="image/*" onChange={(event) => setExitFile(event.target.files?.[0] ?? null)} /></label>
+        <label><span>Exit screenshots</span><input key={exitFileInputKey} type="file" accept="image/*" multiple onChange={(event) => setExitFiles(filesFromInput(event.target.files))} /><small>{formatSelectedFileCount(exitFiles)}</small></label>
         <button className="primary" disabled={addExitSaving} type="submit">{addExitSaving ? "Saving..." : "Save Exit"}</button>
       </form>
       <section>
@@ -1264,7 +1256,7 @@ function TradeDetail(props: { readonly tradeId: number; readonly referenceData: 
           <Input label="Reason" value={editExitForm.reason} onChange={(value) => setEditExitForm({ ...editExitForm, reason: value })} />
           <label><span>Emotional state</span><textarea value={editExitForm.emotionalState} onChange={(event) => setEditExitForm({ ...editExitForm, emotionalState: event.target.value })} /></label>
           <label><span>Notes</span><textarea value={editExitForm.notes} onChange={(event) => setEditExitForm({ ...editExitForm, notes: event.target.value })} /></label>
-          <label><span>Append exit screenshot</span><input type="file" accept="image/*" onChange={(event) => setEditExitFile(event.target.files?.[0] ?? null)} /></label>
+          <label><span>Append exit screenshots</span><input type="file" accept="image/*" multiple onChange={(event) => setEditExitFiles(filesFromInput(event.target.files))} /><small>{formatSelectedFileCount(editExitFiles)}</small></label>
           <div className="form-actions"><button className="primary" disabled={editExitSaving} type="submit">{editExitSaving ? "Saving..." : "Save Exit Changes"}</button><button className="ghost" type="button" onClick={() => setEditingExitId(null)}>Cancel</button></div>
         </form>
       ) : null}
@@ -1517,6 +1509,17 @@ function formatTableQuantity(mode: "open" | "closed", trade: Trade): string {
 
 function formatTradeClassification(trade: Trade): string {
   return `${trade.setupName ?? "No setup"} · ${trade.entryMethodName ?? "No entry method"}`;
+}
+
+function filesFromInput(files: FileList | null): readonly File[] {
+  return files ? Array.from(files) : [];
+}
+
+function formatSelectedFileCount(files: readonly File[]): string {
+  if (files.length === 0) {
+    return "No files selected";
+  }
+  return files.length === 1 ? "1 file selected" : `${files.length} files selected`;
 }
 
 function updateEntryPrice(form: TradeFormState, entryPrice: string): TradeFormState {

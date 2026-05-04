@@ -867,6 +867,30 @@ small {
   object-fit: contain;
 }
 
+.image-preview-stage {
+  align-items: center;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 44px minmax(0, 1fr) 44px;
+}
+
+.image-preview-nav {
+  align-items: center;
+  aspect-ratio: 1;
+  background: #122620;
+  border: 0;
+  border-radius: 8px;
+  color: #fffdfa;
+  cursor: pointer;
+  display: inline-flex;
+  justify-content: center;
+}
+
+.image-preview-nav:disabled {
+  cursor: not-allowed;
+  opacity: .35;
+}
+
 .drawer-header {
   align-items: flex-start;
   background: #fffdfa;

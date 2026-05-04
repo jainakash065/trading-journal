@@ -1,4 +1,4 @@
-import { Activity, BarChart3, BookOpen, ChartNoAxesCombined, ClipboardCheck, IndianRupee, Pencil, Plus, Settings as SettingsIcon, Trash2, X } from "lucide-react";
+import { Activity, BarChart3, BookOpen, ChartNoAxesCombined, ChevronLeft, ChevronRight, ClipboardCheck, IndianRupee, Pencil, Plus, Settings as SettingsIcon, Trash2, X } from "lucide-react";
 import { FormEvent, type PointerEvent, useEffect, useState } from "react";
 import { apiDelete, apiGet, apiSend, endpoints, type AppData, type ClosedTradeFilters, type ClosedTradeOutcomeFilter, type MarketHoliday, type ReferenceData, uploadScreenshots } from "./api";
 import type { CapitalCurvePoint, Dashboard, DashboardPeriodKey, EntryMethodAnalyticsRow, LastNTradeCount, PagedTrades, RDistributionBucket, Settings, SetupAnalyticsRow, SetupEntryMethodAnalyticsRow, Trade, TradeExit } from "./types";
@@ -871,7 +871,7 @@ function TradeDetail(props: { readonly tradeId: number; readonly referenceData: 
   const [reviewSaveMessage, setReviewSaveMessage] = useState("");
   const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState | null>(null);
   const [confirmSaving, setConfirmSaving] = useState(false);
-  const [screenshotPreview, setScreenshotPreview] = useState<ScreenshotPreview | null>(null);
+  const [screenshotPreviewIndex, setScreenshotPreviewIndex] = useState<number | null>(null);
   const hasActiveEdit = editTradeOpen || editingExitId !== null;
   const load = async (): Promise<void> => {
     const loaded = await apiGet<typeof detail>(`/api/trades/${props.tradeId}`);
@@ -886,11 +886,21 @@ function TradeDetail(props: { readonly tradeId: number; readonly referenceData: 
   }, [props.tradeId]);
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent): void => {
-      if (event.key !== "Escape") {
-        return;
+      if (screenshotPreviewIndex !== null && detail) {
+        if (event.key === "ArrowLeft") {
+          setScreenshotPreviewIndex((index: number | null) => index === null ? null : Math.max(index - 1, 0));
+          return;
+        }
+        if (event.key === "ArrowRight") {
+          setScreenshotPreviewIndex((index: number | null) => index === null ? null : Math.min(index + 1, detail.screenshots.length - 1));
+          return;
+        }
+        if (event.key === "Escape") {
+          setScreenshotPreviewIndex(null);
+          return;
+        }
       }
-      if (screenshotPreview) {
-        setScreenshotPreview(null);
+      if (event.key !== "Escape") {
         return;
       }
       if (confirmDialog) {
@@ -901,7 +911,7 @@ function TradeDetail(props: { readonly tradeId: number; readonly referenceData: 
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [confirmDialog, hasActiveEdit, screenshotPreview]);
+  }, [confirmDialog, detail, hasActiveEdit, screenshotPreviewIndex]);
   const closeConfirmDialog = (): void => {
     if (confirmSaving) {
       return;
@@ -1175,7 +1185,7 @@ function TradeDetail(props: { readonly tradeId: number; readonly referenceData: 
         <Metric label="Position value" value={money(detail.trade.positionValue)} />
         <Metric label="Position %" value={formatPercent(detail.trade.positionSizePercentage)} />
       </div>
-      <ImageStrip screenshots={detail.screenshots} onPreview={setScreenshotPreview} />
+      <ImageStrip screenshots={detail.screenshots} onPreview={setScreenshotPreviewIndex} />
       {detail.trade.status !== "closed" ? (
         <form className="compact-form" onSubmit={currentPriceSubmit}>
           <h3>Current Price</h3>
@@ -1285,7 +1295,14 @@ function TradeDetail(props: { readonly tradeId: number; readonly referenceData: 
           title={confirmDialog.title}
         />
       ) : null}
-      {screenshotPreview ? <ImagePreviewModal screenshot={screenshotPreview} onClose={() => setScreenshotPreview(null)} /> : null}
+      {screenshotPreviewIndex !== null ? (
+        <ImagePreviewModal
+          currentIndex={screenshotPreviewIndex}
+          screenshots={detail.screenshots}
+          onClose={() => setScreenshotPreviewIndex(null)}
+          onNavigate={setScreenshotPreviewIndex}
+        />
+      ) : null}
     </div>
   );
 }
@@ -1439,14 +1456,14 @@ function StopLossControl(props: {
   );
 }
 
-function ImageStrip(props: { readonly screenshots: readonly ScreenshotPreview[]; readonly onPreview: (screenshot: ScreenshotPreview) => void }): JSX.Element {
+function ImageStrip(props: { readonly screenshots: readonly ScreenshotPreview[]; readonly onPreview: (index: number) => void }): JSX.Element {
   if (props.screenshots.length === 0) {
     return <p className="muted">No screenshots attached.</p>;
   }
   return (
     <div className="image-strip">
-      {props.screenshots.map((screenshot: ScreenshotPreview) => (
-        <button aria-label={`Preview ${screenshot.type} screenshot`} className="image-thumb" key={screenshot.id} onClick={() => props.onPreview(screenshot)} type="button">
+      {props.screenshots.map((screenshot: ScreenshotPreview, index: number) => (
+        <button aria-label={`Preview ${screenshot.type} screenshot`} className="image-thumb" key={screenshot.id} onClick={() => props.onPreview(index)} type="button">
           <img alt={`${screenshot.type} screenshot`} src={screenshot.url} />
         </button>
       ))}
@@ -1454,16 +1471,31 @@ function ImageStrip(props: { readonly screenshots: readonly ScreenshotPreview[];
   );
 }
 
-function ImagePreviewModal(props: { readonly screenshot: ScreenshotPreview; readonly onClose: () => void }): JSX.Element {
+function ImagePreviewModal(props: {
+  readonly currentIndex: number;
+  readonly screenshots: readonly ScreenshotPreview[];
+  readonly onClose: () => void;
+  readonly onNavigate: (index: number) => void;
+}): JSX.Element {
+  const screenshot: ScreenshotPreview = props.screenshots[props.currentIndex];
+  const hasPrevious: boolean = props.currentIndex > 0;
+  const hasNext: boolean = props.currentIndex < props.screenshots.length - 1;
   return (
     <div aria-modal="true" className="image-preview-layer" role="dialog">
       <button aria-label="Close screenshot preview" className="confirm-backdrop" onClick={props.onClose} type="button" />
       <section className="image-preview-dialog">
         <header className="confirm-header">
-          <h2>{props.screenshot.type} screenshot</h2>
+          <div>
+            <h2>{screenshot.type} screenshot</h2>
+            <p className="muted">{props.currentIndex + 1} of {props.screenshots.length}</p>
+          </div>
           <button aria-label="Close screenshot preview" className="icon-secondary" onClick={props.onClose} type="button"><X size={18} /></button>
         </header>
-        <img alt={`${props.screenshot.type} screenshot preview`} src={props.screenshot.url} />
+        <div className="image-preview-stage">
+          <button aria-label="Previous screenshot" className="image-preview-nav previous" disabled={!hasPrevious} onClick={() => props.onNavigate(props.currentIndex - 1)} type="button"><ChevronLeft size={24} /></button>
+          <img alt={`${screenshot.type} screenshot preview`} src={screenshot.url} />
+          <button aria-label="Next screenshot" className="image-preview-nav next" disabled={!hasNext} onClick={() => props.onNavigate(props.currentIndex + 1)} type="button"><ChevronRight size={24} /></button>
+        </div>
       </section>
     </div>
   );

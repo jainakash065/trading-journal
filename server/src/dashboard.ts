@@ -1,5 +1,6 @@
 import type Database from "better-sqlite3";
-import { getCurrentCapital, getSettings } from "./repository";
+import { calculateTradingDurationDays } from "./calculations";
+import { countMarketHolidaysForYear, getCurrentCapital, getSettings, listMarketHolidayDates } from "./repository";
 
 type ClosedTradeMetric = {
   readonly id: number;
@@ -161,6 +162,7 @@ export type Dashboard = {
   readonly setupAnalytics: readonly SetupAnalyticsRow[];
   readonly entryMethodAnalytics: readonly EntryMethodAnalyticsRow[];
   readonly setupEntryMethodAnalytics: readonly SetupEntryMethodAnalyticsRow[];
+  readonly missingHolidayYear: number | null;
 };
 
 export function buildDashboard(db: Database.Database, periodKey: DashboardPeriodKey = "this_month", today: Date = new Date(), lastN: LastNTradeCount = 20): Dashboard {
@@ -169,7 +171,8 @@ export function buildDashboard(db: Database.Database, periodKey: DashboardPeriod
   const todayText: string = formatDate(today);
   const capitalHistoryStartDate: string = settings.capitalHistoryStartDate ?? todayText;
   const period: DashboardPeriod = getDashboardPeriod(periodKey, today);
-  const closedTrades: readonly ClosedTradeMetric[] = listClosedTradeMetrics(db);
+  const marketHolidays: readonly string[] = listMarketHolidayDates(db);
+  const closedTrades: readonly ClosedTradeMetric[] = listClosedTradeMetrics(db, marketHolidays);
   const lastNTrades: LastNTradesAnalytics = calculateLastNTradesAnalytics(selectLastNClosedTrades(closedTrades, lastN), lastN);
   const realizedExits: readonly RealizedExitMetric[] = listRealizedExitMetrics(db);
   const periodTrades: readonly ClosedTradeMetric[] = filterTradesByPeriod(closedTrades, period);
@@ -237,7 +240,8 @@ export function buildDashboard(db: Database.Database, periodKey: DashboardPeriod
     lastNTrades,
     setupAnalytics: calculateSetupAnalytics(periodTrades),
     entryMethodAnalytics: calculateEntryMethodAnalytics(periodTrades),
-    setupEntryMethodAnalytics: calculateSetupEntryMethodAnalytics(periodTrades)
+    setupEntryMethodAnalytics: calculateSetupEntryMethodAnalytics(periodTrades),
+    missingHolidayYear: countMarketHolidaysForYear(db, today.getUTCFullYear()) === 0 ? today.getUTCFullYear() : null
   };
 }
 
@@ -257,8 +261,8 @@ export function parseLastNTradeCount(value: unknown): LastNTradeCount {
   return 20;
 }
 
-function listClosedTradeMetrics(db: Database.Database): readonly ClosedTradeMetric[] {
-  return db.prepare(`
+function listClosedTradeMetrics(db: Database.Database, marketHolidays: readonly string[]): readonly ClosedTradeMetric[] {
+  const rows = db.prepare(`
     SELECT t.id, t.symbol, s.name AS setupName, em.name AS entryMethodName, COALESCE(SUM(e.pnl), 0) AS realizedPnl,
       CASE
         WHEN ((t.entry_price - t.stop_loss) * t.quantity) > 0
@@ -267,7 +271,6 @@ function listClosedTradeMetrics(db: Database.Database): readonly ClosedTradeMetr
       END AS finalR,
       t.entry_date AS entryDate,
       MAX(e.exit_date) AS closedDate,
-      CAST(JULIANDAY(MAX(e.exit_date)) - JULIANDAY(t.entry_date) + 1 AS INTEGER) AS durationDays,
       r.followed_plan AS followedPlan, r.rule_score AS ruleScore
     FROM trades t
     JOIN trade_exits e ON e.trade_id = t.id
@@ -277,7 +280,11 @@ function listClosedTradeMetrics(db: Database.Database): readonly ClosedTradeMetr
     WHERE t.status = 'closed'
     GROUP BY t.id
     ORDER BY closedDate ASC, t.id ASC
-  `).all() as ClosedTradeMetric[];
+  `).all() as Omit<ClosedTradeMetric, "durationDays">[];
+  return rows.map((row: Omit<ClosedTradeMetric, "durationDays">) => ({
+    ...row,
+    durationDays: calculateTradingDurationDays({ entryDate: row.entryDate, exitDate: row.closedDate, holidays: marketHolidays })
+  }));
 }
 
 function listRealizedExitMetrics(db: Database.Database): readonly RealizedExitMetric[] {

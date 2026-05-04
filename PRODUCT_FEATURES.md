@@ -158,7 +158,7 @@ Implemented fields:
 - Emotional state before entry.
 - Confidence level.
 - Notes.
-- Entry screenshot upload.
+- Entry screenshot upload, including selecting multiple screenshots at once.
 
 Implemented behaviors:
 
@@ -191,7 +191,7 @@ Implemented fields:
 - Exit price.
 - Quantity exited.
 - Exit reason.
-- Exit screenshot.
+- Exit screenshots, including selecting multiple screenshots at once.
 - Exit notes.
 - Emotional state during exit.
 - P&L for that exit.
@@ -272,6 +272,7 @@ Implemented:
 - Entry screenshot upload.
 - Exit screenshot upload.
 - Multiple screenshots per trade/exit through append behavior.
+- Multi-select screenshot upload for adding several timeframe screenshots in one action.
 - Screenshots are associated by trade ID and optional exit ID, so screenshots for repeated trades in the same stock do not collide.
 - Thumbnail preview inside trade detail.
 - Click any screenshot thumbnail to open a large in-app preview modal.
@@ -280,7 +281,6 @@ Implemented:
 
 Future scope:
 
-- Multi-select screenshot upload for adding several timeframe screenshots in one action.
 - Screenshot zoom/pan.
 - Screenshot annotations.
 - Screenshot replacement without deleting trade/exit.
@@ -504,7 +504,8 @@ Current dashboard and analytics rules:
 - R expectancy, R distribution, and winner/loser holding-day averages are based only on fully closed trades.
 - Period R Distribution belongs to the selected dashboard period.
 - Last N R Distribution belongs only to the selected last-N closed trade sample.
-- Winner/loser holding-day averages use inclusive calendar days from entry date to final exit date.
+- Winner/loser holding-day averages use inclusive trading days from entry date to final exit date.
+- Trading-day duration excludes Saturdays, Sundays, and saved India market holidays.
 - Partial exits from still-open trades affect Booked P&L and Open Realized P&L, but not win rate, average R, expectancy, R distribution, or holding-day averages.
 - Booked P&L and max drawdown use realized exit booking dates, including partial exits.
 - Equity curve uses booked realized exit dates, not final trade close dates.
@@ -670,6 +671,9 @@ Implemented:
 - Starting capital.
 - Capital history start date.
 - Default risk percentage.
+- Market holiday list by calendar year.
+- Add/delete market holidays from Settings.
+- Missing current-year holiday reminder for holding-duration accuracy.
 - Setup list.
 - Checklist item list.
 - Mistake tag list.

@@ -10,6 +10,7 @@ import {
   calculateSuggestedQuantity,
   calculateStopLossPercentageFromPrice,
   calculateStopLossPriceFromPercentage,
+  calculateTradingDurationDays,
   summarizeTrade
 } from "../server/src/calculations";
 import type { ExitRow, TradeRow } from "../server/src/types";
@@ -43,7 +44,7 @@ describe("trading calculations", () => {
     })).toBeNull();
   });
 
-  it("calculates inclusive trade duration", () => {
+  it("calculates inclusive calendar trade duration", () => {
     expect(calculateInclusiveDurationDays({
       entryDate: "2026-04-07",
       exitDate: "2026-04-23"
@@ -52,6 +53,29 @@ describe("trading calculations", () => {
       entryDate: "2026-04-07",
       exitDate: "2026-04-07"
     })).toBe(1);
+  });
+
+  it("calculates inclusive trading duration excluding weekends and holidays", () => {
+    expect(calculateTradingDurationDays({
+      entryDate: "2026-05-04",
+      exitDate: "2026-05-04",
+      holidays: []
+    })).toBe(1);
+    expect(calculateTradingDurationDays({
+      entryDate: "2026-05-02",
+      exitDate: "2026-05-03",
+      holidays: []
+    })).toBe(0);
+    expect(calculateTradingDurationDays({
+      entryDate: "2026-04-29",
+      exitDate: "2026-05-04",
+      holidays: ["2026-05-01"]
+    })).toBe(3);
+    expect(calculateTradingDurationDays({
+      entryDate: "2026-05-04",
+      exitDate: "2026-05-01",
+      holidays: []
+    })).toBe(0);
   });
 
   it("calculates partial exit pnl and r multiple", () => {
@@ -131,10 +155,10 @@ describe("trading calculations", () => {
       createExit({ id: 3, exitDate: "2026-04-23", exitPrice: 5358.9, quantity: 5, pnl: 8369.5, rMultiple: 5.68 })
     ];
     expect(exits.map((exit: ExitRow) => exit.rMultiple)).toEqual([2.15, 3.41, 5.68]);
-    expect(summarizeTrade(trade, exits)).toMatchObject({
+    expect(summarizeTrade(trade, exits, ["2026-04-14"])).toMatchObject({
       finalRMultiple: 11.23,
       portfolioImpactPercentage: 3.01,
-      durationDays: 17
+      durationDays: 12
     });
   });
 

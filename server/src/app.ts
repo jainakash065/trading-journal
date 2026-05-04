@@ -20,17 +20,22 @@ import {
   listEntryMethods,
   listChecklistResponses,
   listExits,
+  listMarketHolidayDates,
+  listMarketHolidays,
   listMistakeTags,
   listScreenshots,
   listSetups,
   listTrades,
   saveScreenshot,
+  countMarketHolidaysForYear,
+  deleteMarketHoliday,
   updateExit,
   updateActiveStopLoss,
   updateCurrentPrice,
   updateReview,
   updateSettings,
   updateTrade,
+  upsertMarketHoliday,
   upsertListItem,
   type ClosedTradeOutcome
 } from "./repository";
@@ -93,6 +98,12 @@ const reviewSchema = z.object({
   mistakeIds: z.array(z.coerce.number().int()).default([])
 });
 
+const marketHolidaySchema = z.object({
+  date: z.string().min(1),
+  name: z.string().min(1),
+  market: z.string().default("India")
+});
+
 function createUpload(folder: string): multer.Multer {
   return multer({
     storage: multer.diskStorage({
@@ -105,6 +116,16 @@ function createUpload(folder: string): multer.Multer {
   });
 }
 
+function getUploadedScreenshots(request: Request): readonly Express.Multer.File[] {
+  if (Array.isArray(request.files)) {
+    return request.files;
+  }
+  if (request.files) {
+    return [...(request.files.screenshot ?? []), ...(request.files.screenshots ?? [])];
+  }
+  return request.file ? [request.file] : [];
+}
+
 export function createApp(): express.Express {
   const app = express();
   app.use(cors());
@@ -112,7 +133,16 @@ export function createApp(): express.Express {
   app.use("/uploads/entries", express.static(entryScreenshotDir));
   app.use("/uploads/exits", express.static(exitScreenshotDir));
   app.get("/api/health", (_request: Request, response: Response) => response.json({ ok: true }));
-  app.get("/api/settings", (_request: Request, response: Response) => response.json({ ...getSettings(db), currentCapital: getCurrentCapital(db) }));
+  app.get("/api/settings", (_request: Request, response: Response) => {
+    const currentYear: number = new Date().getFullYear();
+    const currentYearHolidayCount: number = countMarketHolidaysForYear(db, currentYear);
+    response.json({
+      ...getSettings(db),
+      currentCapital: getCurrentCapital(db),
+      currentYearHolidayCount,
+      missingHolidayYear: currentYearHolidayCount === 0 ? currentYear : null
+    });
+  });
   app.put("/api/settings", (request: Request, response: Response) => response.json(updateSettings(db, request.body as Record<string, string>)));
   app.get("/api/reference-data", (_request: Request, response: Response) => response.json({
     setups: listSetups(db),
@@ -136,7 +166,19 @@ export function createApp(): express.Express {
       })
     });
   });
+  app.get("/api/market-holidays", (request: Request, response: Response) => {
+    const year: number = Number(request.query.year ?? new Date().getFullYear());
+    response.json(listMarketHolidays(db, Number.isInteger(year) ? year : new Date().getFullYear()));
+  });
+  app.post("/api/market-holidays", (request: Request, response: Response) => {
+    response.status(201).json(upsertMarketHoliday(db, marketHolidaySchema.parse(request.body)));
+  });
+  app.delete("/api/market-holidays/:id", (request: Request, response: Response) => {
+    deleteMarketHoliday(db, Number(request.params.id));
+    response.json({ ok: true });
+  });
   app.get("/api/trades", (request: Request, response: Response) => {
+    const marketHolidays: readonly string[] = listMarketHolidayDates(db);
     if (request.query.status === "closed") {
       const filters = parseClosedTradeFilters(request.query);
       const page = listClosedTradesPage(db, filters);
@@ -144,14 +186,14 @@ export function createApp(): express.Express {
         ...page,
         items: page.items.map((trade) => {
           const exits = listExits(db, trade.id);
-          return { ...trade, summary: summarizeTrade(trade, exits) };
+          return { ...trade, summary: summarizeTrade(trade, exits, marketHolidays) };
         })
       });
       return;
     }
     response.json(listTrades(db, false).map((trade) => {
       const exits = listExits(db, trade.id);
-      return { ...trade, summary: summarizeTrade(trade, exits) };
+      return { ...trade, summary: summarizeTrade(trade, exits, marketHolidays) };
     }));
   });
   app.post("/api/trades", (request: Request, response: Response) => {
@@ -167,10 +209,11 @@ export function createApp(): express.Express {
       return;
     }
     const exits = listExits(db, tradeId);
+    const marketHolidays: readonly string[] = listMarketHolidayDates(db);
     response.json({
       trade,
       exits,
-      summary: summarizeTrade(trade, exits),
+      summary: summarizeTrade(trade, exits, marketHolidays),
       screenshots: listScreenshots(db, tradeId).map((screenshot) => ({
         ...screenshot,
         url: `/uploads/${screenshot.type === "entry" ? "entries" : "exits"}/${path.basename(screenshot.filePath)}`
@@ -211,21 +254,23 @@ export function createApp(): express.Express {
     updateReview(db, Number(request.params.id), reviewSchema.parse(request.body));
     response.json({ ok: true });
   });
-  app.post("/api/trades/:id/screenshots/entry", createUpload(entryScreenshotDir).single("screenshot"), (request: Request, response: Response) => {
-    if (!request.file) {
+  app.post("/api/trades/:id/screenshots/entry", createUpload(entryScreenshotDir).fields([{ name: "screenshot", maxCount: 20 }, { name: "screenshots", maxCount: 20 }]), (request: Request, response: Response) => {
+    const files: readonly Express.Multer.File[] = getUploadedScreenshots(request);
+    if (files.length === 0) {
       response.status(400).json({ message: "Screenshot is required" });
       return;
     }
-    saveScreenshot(db, { tradeId: Number(request.params.id), exitId: null, type: "entry", filePath: request.file.path, originalName: request.file.originalname });
-    response.status(201).json({ ok: true });
+    files.forEach((file: Express.Multer.File) => saveScreenshot(db, { tradeId: Number(request.params.id), exitId: null, type: "entry", filePath: file.path, originalName: file.originalname }));
+    response.status(201).json({ ok: true, count: files.length });
   });
-  app.post("/api/trades/:id/exits/:exitId/screenshots", createUpload(exitScreenshotDir).single("screenshot"), (request: Request, response: Response) => {
-    if (!request.file) {
+  app.post("/api/trades/:id/exits/:exitId/screenshots", createUpload(exitScreenshotDir).fields([{ name: "screenshot", maxCount: 20 }, { name: "screenshots", maxCount: 20 }]), (request: Request, response: Response) => {
+    const files: readonly Express.Multer.File[] = getUploadedScreenshots(request);
+    if (files.length === 0) {
       response.status(400).json({ message: "Screenshot is required" });
       return;
     }
-    saveScreenshot(db, { tradeId: Number(request.params.id), exitId: Number(request.params.exitId), type: "exit", filePath: request.file.path, originalName: request.file.originalname });
-    response.status(201).json({ ok: true });
+    files.forEach((file: Express.Multer.File) => saveScreenshot(db, { tradeId: Number(request.params.id), exitId: Number(request.params.exitId), type: "exit", filePath: file.path, originalName: file.originalname }));
+    response.status(201).json({ ok: true, count: files.length });
   });
   app.get("/api/dashboard", (request: Request, response: Response) => {
     response.json(buildDashboard(db, parseDashboardPeriodKey(request.query.period), new Date(), parseLastNTradeCount(request.query.lastN)));

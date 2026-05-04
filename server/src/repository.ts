@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 import fs from "node:fs";
 import { calculateExitPnl, calculateExitRMultiple, calculatePlannedRiskAmount, summarizeTrade } from "./calculations";
-import type { ExitRow, ReviewRow, ScreenshotRow, TradeRow } from "./types";
+import type { ExitRow, MarketHolidayRow, ReviewRow, ScreenshotRow, TradeRow } from "./types";
 
 type ListItem = {
   readonly id: number;
@@ -100,6 +100,46 @@ export function listChecklistItems(db: Database.Database): readonly ListItem[] {
 
 export function listMistakeTags(db: Database.Database): readonly ListItem[] {
   return db.prepare("SELECT id, label, active FROM mistake_tags ORDER BY label").all() as ListItem[];
+}
+
+export function listMarketHolidays(db: Database.Database, year: number, market: string = "India"): readonly MarketHolidayRow[] {
+  return db.prepare(`
+    SELECT id, date, name, market, created_at AS createdAt
+    FROM market_holidays
+    WHERE market = ? AND date >= ? AND date <= ?
+    ORDER BY date ASC
+  `).all(market, `${year}-01-01`, `${year}-12-31`) as MarketHolidayRow[];
+}
+
+export function listMarketHolidayDates(db: Database.Database, market: string = "India"): readonly string[] {
+  const rows = db.prepare("SELECT date FROM market_holidays WHERE market = ? ORDER BY date").all(market) as { readonly date: string }[];
+  return rows.map((row: { readonly date: string }) => row.date);
+}
+
+export function countMarketHolidaysForYear(db: Database.Database, year: number, market: string = "India"): number {
+  const row = db.prepare(`
+    SELECT COUNT(*) AS count
+    FROM market_holidays
+    WHERE market = ? AND date >= ? AND date <= ?
+  `).get(market, `${year}-01-01`, `${year}-12-31`) as { readonly count: number };
+  return row.count;
+}
+
+export function upsertMarketHoliday(db: Database.Database, input: { readonly date: string; readonly name: string; readonly market?: string }): MarketHolidayRow {
+  db.prepare(`
+    INSERT INTO market_holidays (date, name, market)
+    VALUES (?, ?, ?)
+    ON CONFLICT(market, date) DO UPDATE SET name = excluded.name
+  `).run(input.date, input.name, input.market ?? "India");
+  return db.prepare(`
+    SELECT id, date, name, market, created_at AS createdAt
+    FROM market_holidays
+    WHERE market = ? AND date = ?
+  `).get(input.market ?? "India", input.date) as MarketHolidayRow;
+}
+
+export function deleteMarketHoliday(db: Database.Database, id: number): void {
+  db.prepare("DELETE FROM market_holidays WHERE id = ?").run(id);
 }
 
 export function upsertListItem(db: Database.Database, table: string, value: string): readonly ListItem[] {

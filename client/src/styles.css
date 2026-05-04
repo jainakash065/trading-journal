@@ -151,6 +151,13 @@ nav {
   padding: 10px 12px;
 }
 
+.info-note.warning {
+  background: #fff8df;
+  border-color: #e4b84f;
+  color: #6d4d00;
+  margin-bottom: 14px;
+}
+
 .metric-grid {
   display: grid;
   gap: 14px;
@@ -858,6 +865,30 @@ small {
   max-height: calc(100vh - 138px);
   max-width: 100%;
   object-fit: contain;
+}
+
+.image-preview-stage {
+  align-items: center;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 44px minmax(0, 1fr) 44px;
+}
+
+.image-preview-nav {
+  align-items: center;
+  aspect-ratio: 1;
+  background: #122620;
+  border: 0;
+  border-radius: 8px;
+  color: #fffdfa;
+  cursor: pointer;
+  display: inline-flex;
+  justify-content: center;
+}
+
+.image-preview-nav:disabled {
+  cursor: not-allowed;
+  opacity: .35;
 }
 
 .drawer-header {

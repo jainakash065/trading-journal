@@ -1,4 +1,4 @@
-import type { Dashboard, DashboardPeriodKey, LastNTradeCount, PagedTrades, ReferenceItem, Settings, Trade } from "./types";
+import type { Dashboard, DashboardPeriodKey, LastNTradeCount, MarketHoliday, PagedTrades, ReferenceItem, Settings, Trade } from "./types";
 
 export type ReferenceData = {
   readonly setups: readonly ReferenceItem[];
@@ -36,9 +36,12 @@ export async function apiDelete(path: string): Promise<void> {
   await parseResponse<{ readonly ok: boolean }>(response);
 }
 
-export async function uploadScreenshot(path: string, file: File): Promise<void> {
+export async function uploadScreenshots(path: string, files: readonly File[]): Promise<void> {
+  if (files.length === 0) {
+    return;
+  }
   const body: FormData = new FormData();
-  body.append("screenshot", file);
+  files.forEach((file: File) => body.append("screenshots", file));
   const response: Response = await fetch(path, { method: "POST", body });
   await parseResponse<{ readonly ok: boolean }>(response);
 }
@@ -46,6 +49,7 @@ export async function uploadScreenshot(path: string, file: File): Promise<void> 
 export const endpoints = {
   dashboard: (period: DashboardPeriodKey, lastN: LastNTradeCount) => `/api/dashboard?period=${period}&lastN=${lastN}`,
   settings: "/api/settings",
+  marketHolidays: (year: number) => `/api/market-holidays?year=${year}`,
   referenceData: "/api/reference-data",
   openTrades: "/api/trades?status=open",
   closedTrades: (params: ClosedTradeFilters & { readonly limit: number; readonly offset: number }) => {
@@ -70,6 +74,8 @@ export type AppData = {
   readonly openTrades: readonly Trade[];
   readonly closedTrades: PagedTrades;
 };
+
+export type { MarketHoliday };
 
 async function parseResponse<T>(response: Response): Promise<T> {
   const json: unknown = await response.json();

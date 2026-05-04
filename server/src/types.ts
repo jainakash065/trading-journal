@@ -69,3 +69,11 @@ export type ReviewRow = {
   readonly repeatNextTime: string;
   readonly avoidNextTime: string;
 };
+
+export type MarketHolidayRow = {
+  readonly id: number;
+  readonly date: string;
+  readonly name: string;
+  readonly market: string;
+  readonly createdAt: string;
+};

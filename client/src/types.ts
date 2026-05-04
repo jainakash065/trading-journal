@@ -12,6 +12,16 @@ export type Settings = {
   readonly defaultDirection: string;
   readonly defaultRiskPercentage: string;
   readonly currentCapital: number;
+  readonly currentYearHolidayCount: number;
+  readonly missingHolidayYear: number | null;
+};
+
+export type MarketHoliday = {
+  readonly id: number;
+  readonly date: string;
+  readonly name: string;
+  readonly market: string;
+  readonly createdAt: string;
 };
 
 export type TradeSummary = {
@@ -199,4 +209,5 @@ export type Dashboard = {
   readonly setupAnalytics: readonly SetupAnalyticsRow[];
   readonly entryMethodAnalytics: readonly EntryMethodAnalyticsRow[];
   readonly setupEntryMethodAnalytics: readonly SetupEntryMethodAnalyticsRow[];
+  readonly missingHolidayYear: number | null;
 };

@@ -114,6 +114,29 @@ export function calculateInclusiveDurationDays(params: {
   return Math.floor((exitTime - entryTime) / millisecondsPerDay) + 1;
 }
 
+export function calculateTradingDurationDays(params: {
+  readonly entryDate: string;
+  readonly exitDate: string;
+  readonly holidays: readonly string[];
+}): number {
+  const entryTime: number = Date.parse(`${params.entryDate}T00:00:00Z`);
+  const exitTime: number = Date.parse(`${params.exitDate}T00:00:00Z`);
+  if (!Number.isFinite(entryTime) || !Number.isFinite(exitTime) || exitTime < entryTime) {
+    return 0;
+  }
+  const holidaySet: ReadonlySet<string> = new Set(params.holidays);
+  let durationDays = 0;
+  for (let time = entryTime; time <= exitTime; time += millisecondsPerDay) {
+    const date: Date = new Date(time);
+    const dayOfWeek: number = date.getUTCDay();
+    const dateText: string = date.toISOString().slice(0, 10);
+    if (dayOfWeek !== 0 && dayOfWeek !== 6 && !holidaySet.has(dateText)) {
+      durationDays += 1;
+    }
+  }
+  return durationDays;
+}
+
 export function calculateSuggestedQuantity(params: {
   readonly capital: number;
   readonly riskPercentage: number;
@@ -165,7 +188,7 @@ export function calculateTradeRMultiple(params: {
   return Number((params.realizedPnl / actualTradeRisk).toFixed(2));
 }
 
-export function summarizeTrade(trade: TradeRow, exits: readonly ExitRow[]): TradeSummary {
+export function summarizeTrade(trade: TradeRow, exits: readonly ExitRow[], marketHolidays: readonly string[] = []): TradeSummary {
   const exitedQuantity: number = exits.reduce((total: number, exit: ExitRow) => total + exit.quantity, 0);
   const realizedPnl: number = Number(exits.reduce((total: number, exit: ExitRow) => total + exit.pnl, 0).toFixed(2));
   const remainingQuantity: number = Math.max(trade.quantity - exitedQuantity, 0);
@@ -206,17 +229,17 @@ export function summarizeTrade(trade: TradeRow, exits: readonly ExitRow[]): Trad
     }),
     averageExitPrice,
     finalRMultiple,
-    durationDays: status === "closed" ? calculateClosedDurationDays(trade, exits) : 0,
+    durationDays: status === "closed" ? calculateClosedDurationDays(trade, exits, marketHolidays) : 0,
     status
   };
 }
 
-function calculateClosedDurationDays(trade: TradeRow, exits: readonly ExitRow[]): number {
+function calculateClosedDurationDays(trade: TradeRow, exits: readonly ExitRow[], marketHolidays: readonly string[]): number {
   const lastExit: ExitRow | undefined = exits.at(-1);
   if (!lastExit) {
     return 0;
   }
-  return calculateInclusiveDurationDays({ entryDate: trade.entryDate, exitDate: lastExit.exitDate });
+  return calculateTradingDurationDays({ entryDate: trade.entryDate, exitDate: lastExit.exitDate, holidays: marketHolidays });
 }
 
 function getTradeStatus(params: {

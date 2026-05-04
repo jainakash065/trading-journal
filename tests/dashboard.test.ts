@@ -216,8 +216,8 @@ describe("dashboard period metrics", () => {
     expect(dashboard.lossPercentage).toBe(50);
     expect(dashboard.averageWinningR).toBe(3.12);
     expect(dashboard.averageLosingR).toBe(0.89);
-    expect(dashboard.averageWinningHoldDays).toBe(3);
-    expect(dashboard.averageLosingHoldDays).toBe(3);
+    expect(dashboard.averageWinningHoldDays).toBe(2.25);
+    expect(dashboard.averageLosingHoldDays).toBe(1.5);
     expect(dashboard.rExpectancy).toBe(1.12);
     expect(dashboard.medianR).toBe(-0.18);
     expect(dashboard.largestWinnerR).toBe(11.23);
@@ -252,8 +252,19 @@ describe("dashboard period metrics", () => {
 
     const dashboard: Dashboard = buildDashboard(db, "last_month", dashboardToday);
 
-    expect(dashboard.averageWinningHoldDays).toBe(3);
-    expect(dashboard.averageLosingHoldDays).toBe(2);
+    expect(dashboard.averageWinningHoldDays).toBe(1.5);
+    expect(dashboard.averageLosingHoldDays).toBe(1);
+  });
+
+  it("uses seeded market holidays for trading-day hold duration examples", () => {
+    const db: Database.Database = createDashboardDatabase();
+    createClosedTradeWithFinalR(db, { symbol: "MTARTECH", finalR: 1, entryDate: "2026-04-07", exitDate: "2026-04-23" });
+    createClosedTradeWithFinalR(db, { symbol: "URBAN", finalR: 1, entryDate: "2026-04-29", exitDate: "2026-05-04" });
+
+    const dashboard: Dashboard = buildDashboard(db, "current_fy", dashboardToday);
+
+    expect(dashboard.averageWinningHoldDays).toBe(7.5);
+    expect(dashboard.lastNTrades.averageWinningHoldDays).toBe(7.5);
   });
 
   it("defaults and validates last N closed trade sample size", () => {
@@ -282,7 +293,7 @@ describe("dashboard period metrics", () => {
     expect(dashboard.lastNTrades.profitFactor).toBe(1000);
     expect(dashboard.lastNTrades.averageWinningR).toBe(1);
     expect(dashboard.lastNTrades.averageLosingR).toBe(0);
-    expect(dashboard.lastNTrades.averageWinningHoldDays).toBe(1);
+    expect(dashboard.lastNTrades.averageWinningHoldDays).toBe(0.5);
     expect(dashboard.lastNTrades.averageLosingHoldDays).toBe(0);
     expect(dashboard.lastNTrades.rDistribution).toEqual([
       { label: "<= -1R", count: 0 },
@@ -482,6 +493,13 @@ describe("dashboard period metrics", () => {
     expect(getDashboardPeriod("last_month", today)).toMatchObject({ startDate: "2026-04-01", endDate: "2026-04-30" });
     expect(getDashboardPeriod("current_fy", today)).toMatchObject({ startDate: "2026-04-01", endDate: "2027-03-31" });
     expect(getDashboardPeriod("last_fy", today)).toMatchObject({ startDate: "2025-04-01", endDate: "2026-03-31" });
+  });
+
+  it("shows the holiday reminder when the current year has no holidays", () => {
+    const db: Database.Database = createDashboardDatabase();
+    const dashboard: Dashboard = buildDashboard(db, "this_month", new Date("2027-01-02T00:00:00Z"));
+
+    expect(dashboard.missingHolidayYear).toBe(2027);
   });
 
   it("infers capital history start date for existing journal data", () => {

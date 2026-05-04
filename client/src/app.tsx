@@ -1,11 +1,12 @@
 import { Activity, BarChart3, BookOpen, ChartNoAxesCombined, ClipboardCheck, IndianRupee, Pencil, Plus, Settings as SettingsIcon, Trash2, X } from "lucide-react";
 import { FormEvent, type PointerEvent, useEffect, useState } from "react";
-import { apiDelete, apiGet, apiSend, endpoints, type AppData, type ClosedTradeFilters, type ClosedTradeOutcomeFilter, type ReferenceData, uploadScreenshots } from "./api";
+import { apiDelete, apiGet, apiSend, endpoints, type AppData, type ClosedTradeFilters, type ClosedTradeOutcomeFilter, type MarketHoliday, type ReferenceData, uploadScreenshots } from "./api";
 import type { CapitalCurvePoint, Dashboard, DashboardPeriodKey, EntryMethodAnalyticsRow, LastNTradeCount, PagedTrades, RDistributionBucket, Settings, SetupAnalyticsRow, SetupEntryMethodAnalyticsRow, Trade, TradeExit } from "./types";
 
 type View = "dashboard" | "analytics" | "new" | "open" | "closed" | "settings";
 
 const today: string = new Date().toISOString().slice(0, 10);
+const currentYear: number = new Date().getFullYear();
 const successToastDurationMs: number = 3000;
 const defaultDashboardPeriod: DashboardPeriodKey = "this_month";
 const dashboardPeriodOptions: readonly { readonly key: DashboardPeriodKey; readonly label: string }[] = [
@@ -219,6 +220,7 @@ function DashboardView(props: {
   return (
     <>
       <DashboardHeader dashboard={d} eyebrow="Performance" period={props.period} title="Dashboard" onPeriodChange={props.onPeriodChange} />
+      <HolidayWarning missingHolidayYear={d.missingHolidayYear} />
       <section className="dashboard-section">
         <h3>Account Snapshot</h3>
         <div className="metric-grid snapshot-grid">
@@ -1298,6 +1300,16 @@ function SettingsView(props: { readonly data: AppData; readonly onSaved: () => P
   const [newEntryMethod, setNewEntryMethod] = useState("");
   const [newChecklist, setNewChecklist] = useState("");
   const [newMistake, setNewMistake] = useState("");
+  const [holidayYear, setHolidayYear] = useState(String(currentYear));
+  const [holidays, setHolidays] = useState<readonly MarketHoliday[]>([]);
+  const [newHoliday, setNewHoliday] = useState({ date: `${currentYear}-01-01`, name: "" });
+  const loadHolidays = async (year: string): Promise<void> => {
+    const parsedYear: number = Number(year);
+    setHolidays(await apiGet<readonly MarketHoliday[]>(endpoints.marketHolidays(Number.isInteger(parsedYear) ? parsedYear : currentYear)));
+  };
+  useEffect(() => {
+    loadHolidays(holidayYear).catch(console.error);
+  }, [holidayYear]);
   const saveSettings = async (): Promise<void> => {
     await apiSend("/api/settings", "PUT", settings);
     await props.onSaved();
@@ -1309,9 +1321,24 @@ function SettingsView(props: { readonly data: AppData; readonly onSaved: () => P
     await apiSend(`/api/reference-data/${type}`, "POST", { value });
     await props.onSaved();
   };
+  const addHoliday = async (): Promise<void> => {
+    if (!newHoliday.name.trim() || !newHoliday.date) {
+      return;
+    }
+    await apiSend("/api/market-holidays", "POST", { ...newHoliday, market: "India" });
+    setNewHoliday({ ...newHoliday, name: "" });
+    await loadHolidays(holidayYear);
+    await props.onSaved();
+  };
+  const deleteHoliday = async (id: number): Promise<void> => {
+    await apiDelete(`/api/market-holidays/${id}`);
+    await loadHolidays(holidayYear);
+    await props.onSaved();
+  };
   return (
     <>
       <Header eyebrow="Controls" title="Settings" />
+      <HolidayWarning missingHolidayYear={props.data.settings.missingHolidayYear} />
       <section className="panel">
         <div className="form-grid">
           <Input label="Starting capital" type="number" value={settings.startingCapital} onChange={(value) => setSettings({ ...settings, startingCapital: value })} />
@@ -1326,7 +1353,55 @@ function SettingsView(props: { readonly data: AppData; readonly onSaved: () => P
         <ReferenceEditor title="Checklist" items={props.data.referenceData.checklistItems.map((item) => item.label ?? "")} value={newChecklist} onChange={setNewChecklist} onAdd={() => addReference("checklist", newChecklist)} />
         <ReferenceEditor title="Mistakes" items={props.data.referenceData.mistakeTags.map((item) => item.label ?? "")} value={newMistake} onChange={setNewMistake} onAdd={() => addReference("mistakes", newMistake)} />
       </div>
+      <MarketHolidayEditor
+        holidays={holidays}
+        newHoliday={newHoliday}
+        year={holidayYear}
+        onAdd={addHoliday}
+        onDelete={deleteHoliday}
+        onHolidayChange={setNewHoliday}
+        onYearChange={(year: string) => {
+          setHolidayYear(year);
+          setNewHoliday({ date: `${year}-01-01`, name: "" });
+        }}
+      />
     </>
+  );
+}
+
+function HolidayWarning(props: { readonly missingHolidayYear: number | null }): JSX.Element | null {
+  if (props.missingHolidayYear === null) {
+    return null;
+  }
+  return <p className="info-note warning">Holiday list missing for {props.missingHolidayYear}. Add market holidays so holding duration is calculated correctly.</p>;
+}
+
+function MarketHolidayEditor(props: {
+  readonly holidays: readonly MarketHoliday[];
+  readonly newHoliday: { readonly date: string; readonly name: string };
+  readonly year: string;
+  readonly onAdd: () => void;
+  readonly onDelete: (id: number) => void;
+  readonly onHolidayChange: (holiday: { readonly date: string; readonly name: string }) => void;
+  readonly onYearChange: (year: string) => void;
+}): JSX.Element {
+  return (
+    <section className="panel">
+      <h2>Market Holidays</h2>
+      <div className="form-grid">
+        <Input label="Year" type="number" value={props.year} onChange={props.onYearChange} />
+        <Input label="Holiday date" type="date" value={props.newHoliday.date} onChange={(date: string) => props.onHolidayChange({ ...props.newHoliday, date })} />
+        <Input label="Holiday name" value={props.newHoliday.name} onChange={(name: string) => props.onHolidayChange({ ...props.newHoliday, name })} />
+        <button className="secondary" type="button" onClick={props.onAdd}>Add Holiday</button>
+      </div>
+      {props.holidays.length === 0 ? <p className="muted">No holidays saved for this year.</p> : null}
+      {props.holidays.map((holiday: MarketHoliday) => (
+        <div className="row" key={holiday.id}>
+          <span>{holiday.date} · {holiday.name}</span>
+          <button className="icon-danger" type="button" onClick={() => props.onDelete(holiday.id)}><Trash2 size={16} /></button>
+        </div>
+      ))}
+    </section>
   );
 }
 

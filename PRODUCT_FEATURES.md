@@ -504,7 +504,8 @@ Current dashboard and analytics rules:
 - R expectancy, R distribution, and winner/loser holding-day averages are based only on fully closed trades.
 - Period R Distribution belongs to the selected dashboard period.
 - Last N R Distribution belongs only to the selected last-N closed trade sample.
-- Winner/loser holding-day averages use inclusive calendar days from entry date to final exit date.
+- Winner/loser holding-day averages use inclusive trading days from entry date to final exit date.
+- Trading-day duration excludes Saturdays, Sundays, and saved India market holidays.
 - Partial exits from still-open trades affect Booked P&L and Open Realized P&L, but not win rate, average R, expectancy, R distribution, or holding-day averages.
 - Booked P&L and max drawdown use realized exit booking dates, including partial exits.
 - Equity curve uses booked realized exit dates, not final trade close dates.
@@ -670,6 +671,9 @@ Implemented:
 - Starting capital.
 - Capital history start date.
 - Default risk percentage.
+- Market holiday list by calendar year.
+- Add/delete market holidays from Settings.
+- Missing current-year holiday reminder for holding-duration accuracy.
 - Setup list.
 - Checklist item list.
 - Mistake tag list.

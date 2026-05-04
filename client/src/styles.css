@@ -151,6 +151,13 @@ nav {
   padding: 10px 12px;
 }
 
+.info-note.warning {
+  background: #fff8df;
+  border-color: #e4b84f;
+  color: #6d4d00;
+  margin-bottom: 14px;
+}
+
 .metric-grid {
   display: grid;
   gap: 14px;

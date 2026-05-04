@@ -44,6 +44,14 @@ function migrate(db: Database.Database): void {
       label TEXT NOT NULL UNIQUE,
       active INTEGER NOT NULL DEFAULT 1
     );
+    CREATE TABLE IF NOT EXISTS market_holidays (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      date TEXT NOT NULL,
+      name TEXT NOT NULL,
+      market TEXT NOT NULL DEFAULT 'India',
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(market, date)
+    );
     CREATE TABLE IF NOT EXISTS capital_ledger (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       entry_date TEXT NOT NULL,
@@ -220,6 +228,30 @@ function seed(db: Database.Database): void {
   ["Chased entry", "Exited early", "Moved stop", "Oversized", "Ignored market"].forEach((label: string) => {
     db.prepare("INSERT OR IGNORE INTO mistake_tags (label) VALUES (?)").run(label);
   });
+  seedMarketHolidays(db);
+}
+
+function seedMarketHolidays(db: Database.Database): void {
+  const holidays: readonly { readonly date: string; readonly name: string }[] = [
+    { date: "2026-01-15", name: "Municipal Corporation Election - Maharashtra" },
+    { date: "2026-01-26", name: "Republic Day" },
+    { date: "2026-03-03", name: "Holi" },
+    { date: "2026-03-26", name: "Shri Ram Navami" },
+    { date: "2026-03-31", name: "Shri Mahavir Jayanti" },
+    { date: "2026-04-03", name: "Good Friday" },
+    { date: "2026-04-14", name: "Dr. Baba Saheb Ambedkar Jayanti" },
+    { date: "2026-05-01", name: "Maharashtra Day" },
+    { date: "2026-05-28", name: "Bakri Id" },
+    { date: "2026-06-26", name: "Muharram" },
+    { date: "2026-09-14", name: "Ganesh Chaturthi" },
+    { date: "2026-10-02", name: "Mahatma Gandhi Jayanti" },
+    { date: "2026-10-20", name: "Dussehra" },
+    { date: "2026-11-10", name: "Diwali-Balipratipada" },
+    { date: "2026-11-24", name: "Prakash Gurpurb Sri Guru Nanak Dev" },
+    { date: "2026-12-25", name: "Christmas" }
+  ];
+  const insert = db.prepare("INSERT OR IGNORE INTO market_holidays (date, name, market) VALUES (?, ?, 'India')");
+  holidays.forEach((holiday) => insert.run(holiday.date, holiday.name));
 }
 
 function ensureCapitalHistoryStartDate(db: Database.Database): void {

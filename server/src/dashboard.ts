@@ -152,6 +152,8 @@ export type Dashboard = {
   readonly maxDrawdown: number;
   readonly openTrades: number;
   readonly openRiskExposure: number;
+  readonly openInvestedValue: number;
+  readonly openInvestedPercentage: number;
   readonly bestSetup: string;
   readonly worstSetup: string;
   readonly ruleFollowedPnl: number;
@@ -188,6 +190,7 @@ export function buildDashboard(db: Database.Database, periodKey: DashboardPeriod
   const grossProfit: number = winners.reduce((total: number, trade: ClosedTradeMetric) => total + trade.realizedPnl, 0);
   const grossLoss: number = Math.abs(losers.reduce((total: number, trade: ClosedTradeMetric) => total + trade.realizedPnl, 0));
   const currentCapital: number = getCurrentCapital(db);
+  const openInvestedValue: number = getOpenInvestedValue(db);
   const periodCapital: PeriodCapital = getPeriodCapital({ db, period, startingCapital, todayText, capitalHistoryStartDate });
   return {
     period,
@@ -225,6 +228,8 @@ export function buildDashboard(db: Database.Database, periodKey: DashboardPeriod
     maxDrawdown: calculateBookedMaxDrawdown({ startingCapital: periodCapital.startingCapital ?? 0, exits: periodExits }),
     openTrades: getCount(db, "SELECT COUNT(*) AS count FROM trades WHERE status != 'closed'"),
     openRiskExposure: getOpenRiskExposure(db),
+    openInvestedValue,
+    openInvestedPercentage: currentCapital > 0 ? round((openInvestedValue / currentCapital) * 100) : 0,
     bestSetup: getSetupByPnl(periodTrades, "best"),
     worstSetup: getSetupByPnl(periodTrades, "worst"),
     ruleFollowedPnl: round(periodTrades.filter((trade: ClosedTradeMetric) => trade.followedPlan === 1).reduce((total: number, trade: ClosedTradeMetric) => total + trade.realizedPnl, 0)),
@@ -612,6 +617,20 @@ function getOpenRiskExposure(db: Database.Database): number {
         ELSE 0
       END
     ), 0) AS total
+    FROM trades t
+    LEFT JOIN (
+      SELECT trade_id, SUM(quantity) AS exited_quantity
+      FROM trade_exits
+      GROUP BY trade_id
+    ) x ON x.trade_id = t.id
+    WHERE t.status != 'closed'
+  `).get() as { total: number };
+  return round(row.total);
+}
+
+function getOpenInvestedValue(db: Database.Database): number {
+  const row = db.prepare(`
+    SELECT COALESCE(SUM(t.entry_price * (t.quantity - COALESCE(x.exited_quantity, 0))), 0) AS total
     FROM trades t
     LEFT JOIN (
       SELECT trade_id, SUM(quantity) AS exited_quantity

@@ -223,10 +223,11 @@ function DashboardView(props: {
       <HolidayWarning missingHolidayYear={d.missingHolidayYear} />
       <section className="dashboard-section">
         <h3>Account Snapshot</h3>
-        <div className="metric-grid snapshot-grid">
+        <div className="metric-grid account-snapshot-grid">
           <Metric label="Current capital" value={money(d.currentCapital)} icon={<IndianRupee />} />
           <Metric label="Open trades" value={String(d.openTrades)} />
           <Metric label="Open risk" value={money(d.openRiskExposure)} />
+          <Metric label="Invested capital" value={`${money(d.openInvestedValue)} · ${formatPercent(d.openInvestedPercentage)}`} />
         </div>
       </section>
       <section className="dashboard-section">

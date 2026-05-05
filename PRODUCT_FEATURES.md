@@ -408,6 +408,7 @@ Implemented:
   - Current capital.
   - Open trades.
   - Open risk.
+  - Open invested capital and invested percentage based on entry price times remaining quantity.
 - Period Capital:
   - Starting capital.
   - Ending capital.
@@ -512,6 +513,7 @@ Current dashboard and analytics rules:
 - Capital is realized-only.
 - Open trade counts and open risk are current account snapshot values, not period-filtered values.
 - Open risk uses active stop loss and remaining quantity.
+- Open invested capital uses entry-cost exposure for open/partially exited trades and excludes closed trades.
 - Deep diagnostics generally belong in Analytics, while Dashboard should stay short and action-oriented.
 
 Future scope:

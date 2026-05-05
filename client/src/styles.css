@@ -184,6 +184,10 @@ nav {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.account-snapshot-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
 .equity-panel {
   display: grid;
   gap: 18px;

@@ -226,7 +226,7 @@ function DashboardView(props: {
         <div className="metric-grid account-snapshot-grid">
           <Metric label="Current capital" value={money(d.currentCapital)} icon={<IndianRupee />} />
           <Metric label="Open trades" value={String(d.openTrades)} />
-          <Metric label="Open risk" value={money(d.openRiskExposure)} />
+          <Metric label="Open risk" value={`${money(d.openRiskExposure)} · ${formatPercent(d.openRiskPercentage)}`} />
           <Metric label="Invested capital" value={`${money(d.openInvestedValue)} · ${formatPercent(d.openInvestedPercentage)}`} />
         </div>
       </section>

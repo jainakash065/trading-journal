@@ -152,6 +152,7 @@ export type Dashboard = {
   readonly maxDrawdown: number;
   readonly openTrades: number;
   readonly openRiskExposure: number;
+  readonly openRiskPercentage: number;
   readonly openInvestedValue: number;
   readonly openInvestedPercentage: number;
   readonly bestSetup: string;
@@ -190,6 +191,7 @@ export function buildDashboard(db: Database.Database, periodKey: DashboardPeriod
   const grossProfit: number = winners.reduce((total: number, trade: ClosedTradeMetric) => total + trade.realizedPnl, 0);
   const grossLoss: number = Math.abs(losers.reduce((total: number, trade: ClosedTradeMetric) => total + trade.realizedPnl, 0));
   const currentCapital: number = getCurrentCapital(db);
+  const openRiskExposure: number = getOpenRiskExposure(db);
   const openInvestedValue: number = getOpenInvestedValue(db);
   const periodCapital: PeriodCapital = getPeriodCapital({ db, period, startingCapital, todayText, capitalHistoryStartDate });
   return {
@@ -227,7 +229,8 @@ export function buildDashboard(db: Database.Database, periodKey: DashboardPeriod
     expectancy: average(periodTrades.map((trade: ClosedTradeMetric) => trade.realizedPnl)),
     maxDrawdown: calculateBookedMaxDrawdown({ startingCapital: periodCapital.startingCapital ?? 0, exits: periodExits }),
     openTrades: getCount(db, "SELECT COUNT(*) AS count FROM trades WHERE status != 'closed'"),
-    openRiskExposure: getOpenRiskExposure(db),
+    openRiskExposure,
+    openRiskPercentage: currentCapital > 0 ? round((openRiskExposure / currentCapital) * 100) : 0,
     openInvestedValue,
     openInvestedPercentage: currentCapital > 0 ? round((openInvestedValue / currentCapital) * 100) : 0,
     bestSetup: getSetupByPnl(periodTrades, "best"),

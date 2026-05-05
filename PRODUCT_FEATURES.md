@@ -407,7 +407,7 @@ Implemented:
 - Account Snapshot:
   - Current capital.
   - Open trades.
-  - Open risk.
+  - Open risk and open risk percentage of current capital.
   - Open invested capital and invested percentage based on entry price times remaining quantity.
 - Period Capital:
   - Starting capital.
@@ -512,7 +512,7 @@ Current dashboard and analytics rules:
 - Equity curve uses booked realized exit dates, not final trade close dates.
 - Capital is realized-only.
 - Open trade counts and open risk are current account snapshot values, not period-filtered values.
-- Open risk uses active stop loss and remaining quantity.
+- Open risk uses active stop loss and remaining quantity, and displays rupee exposure plus percentage of current capital.
 - Open invested capital uses entry-cost exposure for open/partially exited trades and excludes closed trades.
 - Deep diagnostics generally belong in Analytics, while Dashboard should stay short and action-oriented.
 

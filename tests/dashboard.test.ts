@@ -97,6 +97,7 @@ describe("dashboard period metrics", () => {
     expect(dashboard.periodPnl).toBe(dashboard.periodClosedTradePnl);
     expect(dashboard.periodClosedTrades).toBe(1);
     expect(dashboard.openRiskExposure).toBe(825.3);
+    expect(dashboard.openRiskPercentage).toBe(0.14);
     expect(dashboard.capitalCurve).toEqual([
       { date: "2026-04-01", capital: 550000, dailyPnl: 0 },
       { date: "2026-04-09", capital: 553167.4, dailyPnl: 3167.4 },
@@ -135,6 +136,43 @@ describe("dashboard period metrics", () => {
     expect(getTrade(db, atherTradeId)?.stopLoss).toBe(766.35);
     expect(getTrade(db, atherTradeId)?.activeStopLoss).toBe(786);
     expect(dashboard.openRiskExposure).toBe(2501.71);
+    expect(dashboard.openRiskPercentage).toBe(0.45);
+  });
+
+  it("calculates open invested value and percentage from remaining entry-cost exposure", () => {
+    const db: Database.Database = createDashboardDatabase();
+    createOpenTrade(db, {
+      symbol: "OPENFULL",
+      entryPrice: 100,
+      quantity: 10,
+      stopLoss: 90
+    });
+    createPartiallyExitedTrade(db);
+    createMtarTechTrade(db);
+
+    const dashboard: Dashboard = buildDashboard(db, "last_month", dashboardToday);
+
+    expect(dashboard.openInvestedValue).toBe(34012);
+    expect(dashboard.openInvestedPercentage).toBe(5.9);
+  });
+
+  it("returns zero open invested percentage when current capital is zero", () => {
+    const db: Database.Database = createDashboardDatabase();
+    db.prepare("UPDATE settings SET value = '0' WHERE key = 'startingCapital'").run();
+    createOpenTrade(db, {
+      symbol: "ZEROCAP",
+      entryPrice: 100,
+      quantity: 10,
+      stopLoss: 90
+    });
+
+    const dashboard: Dashboard = buildDashboard(db, "last_month", dashboardToday);
+
+    expect(dashboard.currentCapital).toBe(0);
+    expect(dashboard.openRiskExposure).toBe(100);
+    expect(dashboard.openRiskPercentage).toBe(0);
+    expect(dashboard.openInvestedValue).toBe(1000);
+    expect(dashboard.openInvestedPercentage).toBe(0);
   });
 
   it("calculates unrealized metrics from manual current price and remaining quantity", () => {

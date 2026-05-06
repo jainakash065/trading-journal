@@ -199,6 +199,9 @@ export type Dashboard = {
   readonly maxDrawdown: number;
   readonly openTrades: number;
   readonly openRiskExposure: number;
+  readonly openRiskPercentage: number;
+  readonly openInvestedValue: number;
+  readonly openInvestedPercentage: number;
   readonly bestSetup: string;
   readonly worstSetup: string;
   readonly ruleFollowedPnl: number;

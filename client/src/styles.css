@@ -926,12 +926,68 @@ small {
   justify-content: space-between;
 }
 
+.drawer-tabs {
+  background: #fffdfa;
+  border-bottom: 1px solid #ece7dd;
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 10px 22px;
+  position: sticky;
+  top: 75px;
+  z-index: 12;
+}
+
+.drawer-tabs button {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: #56616a;
+  cursor: pointer;
+  font-weight: 800;
+  padding: 8px 10px;
+  white-space: nowrap;
+}
+
+.drawer-tabs button.active {
+  background: #e9f3ed;
+  border-color: #bed9c8;
+  color: #122620;
+}
+
+.drawer-tab-panel {
+  display: grid;
+  gap: 16px;
+}
+
+.tab-stack {
+  display: grid;
+  gap: 18px;
+}
+
+.read-only-block {
+  border-top: 1px solid #ece7dd;
+  display: grid;
+  gap: 8px;
+  padding-top: 18px;
+}
+
+.read-only-block p {
+  margin: 0;
+}
+
 .compact-form {
   border-top: 1px solid #ece7dd;
   display: grid;
   gap: 12px;
   margin-top: 18px;
   padding-top: 18px;
+}
+
+.compact-form.no-divider {
+  border-top: 0;
+  margin-top: 0;
+  padding-top: 0;
 }
 
 .form-actions {

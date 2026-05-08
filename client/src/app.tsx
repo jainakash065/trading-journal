@@ -4,6 +4,7 @@ import { apiDelete, apiGet, apiSend, endpoints, type AppData, type ClosedTradeFi
 import type { CapitalCurvePoint, Dashboard, DashboardPeriodKey, EntryMethodAnalyticsRow, LastNTradeCount, PagedTrades, RDistributionBucket, Settings, SetupAnalyticsRow, SetupEntryMethodAnalyticsRow, Trade, TradeExit } from "./types";
 
 type View = "dashboard" | "analytics" | "new" | "open" | "closed" | "settings";
+type DrawerTab = "overview" | "plan" | "manage" | "exits" | "screenshots" | "review";
 
 const today: string = new Date().toISOString().slice(0, 10);
 const currentYear: number = new Date().getFullYear();
@@ -30,6 +31,14 @@ const closedTradeOutcomeOptions: readonly { readonly key: ClosedTradeOutcomeFilt
   { key: "winners", label: "Winners" },
   { key: "losers", label: "Losers" },
   { key: "breakeven", label: "Breakeven" }
+];
+const drawerTabs: readonly { readonly key: DrawerTab; readonly label: string }[] = [
+  { key: "overview", label: "Overview" },
+  { key: "plan", label: "Plan" },
+  { key: "manage", label: "Manage" },
+  { key: "exits", label: "Exits" },
+  { key: "screenshots", label: "Screenshots" },
+  { key: "review", label: "Review" }
 ];
 
 type StopLossEditedField = "percentage" | "price";
@@ -858,6 +867,7 @@ function TradeDetail(props: { readonly tradeId: number; readonly referenceData: 
   const [activeStopSaving, setActiveStopSaving] = useState(false);
   const [currentPrice, setCurrentPrice] = useState("");
   const [currentPriceSaving, setCurrentPriceSaving] = useState(false);
+  const [activeDrawerTab, setActiveDrawerTab] = useState<DrawerTab>("overview");
   const [editTradeOpen, setEditTradeOpen] = useState(false);
   const [editTradeFiles, setEditTradeFiles] = useState<readonly File[]>([]);
   const [editTradeForm, setEditTradeForm] = useState<TradeFormState | null>(null);
@@ -1019,6 +1029,7 @@ function TradeDetail(props: { readonly tradeId: number; readonly referenceData: 
     });
     setEditTradeChecks(Object.fromEntries(detail.checklistResponses.map((response) => [response.itemId, response.checked])));
     setEditTradeOpen(true);
+    setActiveDrawerTab("plan");
   };
   const editTradeSubmit = async (event: FormEvent): Promise<void> => {
     event.preventDefault();
@@ -1059,6 +1070,7 @@ function TradeDetail(props: { readonly tradeId: number; readonly referenceData: 
   const openExitEditor = (exit: TradeExit): void => {
     setEditingExitId(exit.id);
     setEditExitFiles([]);
+    setActiveDrawerTab("exits");
     setEditExitForm({
       exitDate: exit.exitDate,
       exitPrice: String(exit.exitPrice),
@@ -1154,136 +1166,195 @@ function TradeDetail(props: { readonly tradeId: number; readonly referenceData: 
     <div className="drawer-layer">
       <button aria-label="Close trade panel" className="drawer-backdrop" onClick={requestClose} type="button" />
       <aside className="drawer">
-      <header className="drawer-header">
-        <div className="drawer-title">
-          <h2>{detail.trade.symbol}</h2>
-          <p className="muted">{detail.trade.entryDate} · {formatTradeClassification(detail.trade)} · {detail.summary.status.replace("_", " ")}</p>
+        <header className="drawer-header">
+          <div className="drawer-title">
+            <h2>{detail.trade.symbol}</h2>
+            <p className="muted">{detail.trade.entryDate} · {formatTradeClassification(detail.trade)} · {detail.summary.status.replace("_", " ")}</p>
+          </div>
+          <div className="drawer-actions">
+            <button className="secondary inline-action" onClick={openTradeEditor} type="button"><Pencil size={16} /> Edit Trade</button>
+            <button className="danger" onClick={deleteTrade} type="button"><Trash2 size={16} /> Delete Trade</button>
+            <button aria-label="Close trade panel" className="icon-secondary" onClick={requestClose} type="button"><X size={18} /></button>
+          </div>
+        </header>
+        <nav aria-label="Trade detail sections" className="drawer-tabs" role="tablist">
+          {drawerTabs.map((tab) => (
+            <button aria-selected={activeDrawerTab === tab.key} className={activeDrawerTab === tab.key ? "active" : ""} key={tab.key} onClick={() => setActiveDrawerTab(tab.key)} role="tab" type="button">{tab.label}</button>
+          ))}
+        </nav>
+        <div className="drawer-content">
+          {activeDrawerTab === "overview" ? (
+            <section className="drawer-tab-panel">
+              <div className="two-col">
+                <Metric label="Entry" value={money(detail.trade.entryPrice)} />
+                <Metric label="Remaining" value={`${detail.summary.remainingQuantity}/${detail.trade.quantity}`} />
+                <Metric label="Realized P&L" value={money(detail.summary.realizedPnl)} />
+                <Metric label="Final R" value={String(detail.summary.finalRMultiple)} />
+                <Metric label="Active SL" value={money(detail.trade.activeStopLoss)} />
+                <Metric label="Current open risk" value={money(calculateCurrentOpenRisk(detail.trade, detail.summary.remainingQuantity))} />
+                <Metric label="Current price" value={detail.trade.currentPrice === null ? "-" : money(detail.trade.currentPrice)} />
+                <Metric label="Unrealized P&L" value={money(detail.trade.unrealizedPnl)} tone={getNumberTone(detail.trade.unrealizedPnl)} />
+                <Metric label="Unrealized R" value={formatR(detail.trade.unrealizedR)} tone={getNumberTone(detail.trade.unrealizedR)} />
+                <Metric label="Position value" value={money(detail.trade.positionValue)} />
+                <Metric label="Position %" value={formatPercent(detail.trade.positionSizePercentage)} />
+                <Metric label="Impact %" value={formatSignedPercent(detail.summary.portfolioImpactPercentage)} tone={detail.summary.portfolioImpactPercentage >= 0 ? "good" : "bad"} />
+              </div>
+            </section>
+          ) : null}
+          {activeDrawerTab === "plan" ? (
+            <section className="drawer-tab-panel">
+              {editTradeOpen && editTradeForm ? (
+                <form className="compact-form no-divider" onSubmit={editTradeSubmit}>
+                  <h3>Edit Trade</h3>
+                  <Input label="Symbol" value={editTradeForm.symbol} onChange={(value) => setEditTradeForm({ ...editTradeForm, symbol: value })} required />
+                  <Input label="Entry date" type="date" value={editTradeForm.entryDate} onChange={(value) => setEditTradeForm({ ...editTradeForm, entryDate: value })} required />
+                  <Input label="Entry price" type="number" value={editTradeForm.entryPrice} onChange={(value) => setEditTradeForm(updateEntryPrice(editTradeForm, value))} required />
+                  <Input label="Quantity" type="number" value={editTradeForm.quantity} onChange={(value) => setEditTradeForm({ ...editTradeForm, quantity: value })} required />
+                  <StopLossControl
+                    percentage={editTradeForm.stopLossPercentage}
+                    price={editTradeForm.stopLoss}
+                    onPercentageChange={(value) => setEditTradeForm(updateStopLossPercentage(editTradeForm, value))}
+                    onPriceChange={(value) => setEditTradeForm(updateStopLossPrice(editTradeForm, value))}
+                  />
+                  {detail.trade.status !== "closed" ? <Input label="Current price" type="number" value={editTradeForm.currentPrice} onChange={(value) => setEditTradeForm({ ...editTradeForm, currentPrice: value })} /> : null}
+                  <Input label="Active stop" type="number" value={editTradeForm.activeStopLoss} onChange={(value) => setEditTradeForm({ ...editTradeForm, activeStopLoss: value })} required />
+                  <Input label="Risk %" type="number" value={editTradeForm.riskPercentage} onChange={(value) => setEditTradeForm({ ...editTradeForm, riskPercentage: value })} required />
+                  <Input label="Risk capital base" type="number" value={editTradeForm.riskCapitalBase} onChange={(value) => setEditTradeForm({ ...editTradeForm, riskCapitalBase: value })} required />
+                  <div className="derived-metric"><span>Planned risk</span><strong>{money(Number(editTradeForm.riskCapitalBase) * (Number(editTradeForm.riskPercentage) / 100))}</strong></div>
+                  <div className="derived-metric"><span>Actual risk</span><strong>{money(Math.max(Number(editTradeForm.entryPrice) - Number(editTradeForm.stopLoss), 0) * Number(editTradeForm.quantity || 0))}</strong></div>
+                  <div className="derived-metric"><span>Risk used</span><strong>{formatRiskUsed(editTradeForm)}%</strong></div>
+                  <label><span>Setup</span><select value={editTradeForm.setupId} onChange={(event) => setEditTradeForm({ ...editTradeForm, setupId: event.target.value })}><option value="">Select setup</option>{props.referenceData.setups.map((setup) => <option key={setup.id} value={setup.id}>{setup.name}</option>)}</select></label>
+                  <label><span>Entry Method</span><select value={editTradeForm.entryMethodId} onChange={(event) => setEditTradeForm({ ...editTradeForm, entryMethodId: event.target.value })}><option value="">Select entry method</option>{props.referenceData.entryMethods.map((entryMethod) => <option key={entryMethod.id} value={entryMethod.id}>{entryMethod.name}</option>)}</select></label>
+                  <Input label="Confidence 1-5" type="number" value={editTradeForm.confidence} onChange={(value) => setEditTradeForm({ ...editTradeForm, confidence: value })} />
+                  <label><span>Entry reason</span><textarea value={editTradeForm.entryReason} onChange={(event) => setEditTradeForm({ ...editTradeForm, entryReason: event.target.value })} /></label>
+                  <label><span>Emotional state</span><textarea value={editTradeForm.emotionalState} onChange={(event) => setEditTradeForm({ ...editTradeForm, emotionalState: event.target.value })} /></label>
+                  <label><span>Notes</span><textarea value={editTradeForm.notes} onChange={(event) => setEditTradeForm({ ...editTradeForm, notes: event.target.value })} /></label>
+                  <label><span>Append entry screenshots</span><input type="file" accept="image/*" multiple onChange={(event) => setEditTradeFiles(filesFromInput(event.target.files))} /><small>{formatSelectedFileCount(editTradeFiles)}</small></label>
+                  <div className="checklist">{props.referenceData.checklistItems.map((item) => <label className="check-row" key={item.id}><input checked={Boolean(editTradeChecks[item.id])} type="checkbox" onChange={(event) => setEditTradeChecks({ ...editTradeChecks, [item.id]: event.target.checked })} />{item.label}</label>)}</div>
+                  <div className="form-actions"><button className="primary" disabled={editTradeSaving} type="submit">{editTradeSaving ? "Saving..." : "Save Trade Changes"}</button><button className="ghost" type="button" onClick={() => setEditTradeOpen(false)}>Cancel</button></div>
+                </form>
+              ) : (
+                <div className="tab-stack">
+                  <div className="two-col">
+                    <Metric label="Initial SL" value={money(detail.trade.stopLoss)} />
+                    <Metric label="Planned risk" value={money(detail.trade.plannedRiskAmount)} />
+                    <Metric label="Actual risk" value={money(detail.trade.actualRisk)} />
+                    <Metric label="Risk used" value={`${detail.trade.riskUsedPercentage}%`} />
+                    <Metric label="Risk capital base" value={money(detail.trade.riskCapitalBase)} />
+                    <Metric label="Risk %" value={`${detail.trade.riskPercentage}%`} />
+                  </div>
+                  <section className="read-only-block">
+                    <h3>Entry Plan</h3>
+                    <p><strong>Setup:</strong> {detail.trade.setupName ?? "Unassigned"}</p>
+                    <p><strong>Entry method:</strong> {detail.trade.entryMethodName ?? "Unassigned"}</p>
+                    <p><strong>Entry reason:</strong> {detail.trade.entryReason || "-"}</p>
+                    <p><strong>Emotional state:</strong> {detail.trade.emotionalState || "-"}</p>
+                    <p><strong>Notes:</strong> {detail.trade.notes || "-"}</p>
+                  </section>
+                  <section>
+                    <h3>Checklist</h3>
+                    <div className="checklist">{props.referenceData.checklistItems.map((item) => {
+                      const response = detail.checklistResponses.find((entry) => entry.itemId === item.id);
+                      return <label className="check-row readonly" key={item.id}><input checked={Boolean(response?.checked)} disabled type="checkbox" />{item.label}</label>;
+                    })}</div>
+                  </section>
+                </div>
+              )}
+            </section>
+          ) : null}
+          {activeDrawerTab === "manage" ? (
+            <section className="drawer-tab-panel">
+              {detail.trade.status !== "closed" ? (
+                <div className="tab-stack">
+                  <form className="compact-form no-divider" onSubmit={currentPriceSubmit}>
+                    <h3>Current Price</h3>
+                    <Input label="Current price" type="number" value={currentPrice} onChange={setCurrentPrice} required />
+                    <div className="two-col">
+                      <div className="derived-metric"><span>Unrealized P&L</span><strong>{money(calculateUnrealizedPnlFromValue(detail.trade.entryPrice, Number(currentPrice), detail.summary.remainingQuantity))}</strong></div>
+                      <div className="derived-metric"><span>Unrealized R</span><strong>{formatR(calculateUnrealizedRFromValue(detail.trade, Number(currentPrice), detail.summary.remainingQuantity))}</strong></div>
+                    </div>
+                    <button className="primary" disabled={currentPriceSaving} type="submit">{currentPriceSaving ? "Saving..." : "Save Current Price"}</button>
+                  </form>
+                  <form className="compact-form" onSubmit={activeStopSubmit}>
+                    <h3>Active Stop</h3>
+                    <Input label="Active stop" type="number" value={activeStopLoss} onChange={setActiveStopLoss} required />
+                    <div className="derived-metric"><span>Current open risk</span><strong>{money(calculateCurrentOpenRiskFromValue(detail.trade.entryPrice, Number(activeStopLoss), detail.summary.remainingQuantity))}</strong></div>
+                    <div className="form-actions">
+                      <button className="primary" disabled={activeStopSaving} type="submit">{activeStopSaving ? "Saving..." : "Save Active Stop"}</button>
+                      <button className="secondary" onClick={moveActiveStopToBreakeven} type="button">Move to Breakeven</button>
+                    </div>
+                  </form>
+                </div>
+              ) : (
+                <div className="two-col">
+                  <Metric label="Final active SL" value={money(detail.trade.activeStopLoss)} />
+                  <Metric label="Final current price" value={detail.trade.currentPrice === null ? "-" : money(detail.trade.currentPrice)} />
+                  <Metric label="Current open risk" value={money(0)} />
+                  <Metric label="Remaining" value={`${detail.summary.remainingQuantity}/${detail.trade.quantity}`} />
+                </div>
+              )}
+            </section>
+          ) : null}
+          {activeDrawerTab === "exits" ? (
+            <section className="drawer-tab-panel">
+              {detail.trade.status !== "closed" ? (
+                <form className="compact-form no-divider" onSubmit={addExitSubmit}>
+                  <h3>Add Exit</h3>
+                  <Input label="Exit date" type="date" value={exitForm.exitDate} onChange={(value) => setExitForm({ ...exitForm, exitDate: value })} />
+                  <Input label="Exit price" type="number" value={exitForm.exitPrice} onChange={(value) => setExitForm({ ...exitForm, exitPrice: value })} />
+                  <Input label="Quantity" type="number" value={exitForm.quantity} onChange={(value) => setExitForm({ ...exitForm, quantity: value })} />
+                  <Input label="Reason" value={exitForm.reason} onChange={(value) => setExitForm({ ...exitForm, reason: value })} />
+                  <label><span>Exit screenshots</span><input key={exitFileInputKey} type="file" accept="image/*" multiple onChange={(event) => setExitFiles(filesFromInput(event.target.files))} /><small>{formatSelectedFileCount(exitFiles)}</small></label>
+                  <button className="primary" disabled={addExitSaving} type="submit">{addExitSaving ? "Saving..." : "Save Exit"}</button>
+                </form>
+              ) : null}
+              <section className={detail.trade.status !== "closed" ? "compact-form" : ""}>
+                <h3>Exits</h3>
+                {detail.exits.length === 0 ? <p className="muted">No exits added yet.</p> : null}
+                {detail.exits.map((exit) => (
+                  <div className="row exit-row" key={exit.id}>
+                    <span>{exit.exitDate} · {exit.quantity} @ {money(exit.exitPrice)}</span>
+                    <strong>{money(exit.pnl)} · {exit.rMultiple}R</strong>
+                    <button aria-label={`Edit exit ${exit.exitDate}`} className="icon-secondary" onClick={() => openExitEditor(exit)} type="button"><Pencil size={16} /></button>
+                    <button aria-label={`Delete exit ${exit.exitDate}`} className="icon-danger" onClick={() => deleteExit(exit.id)} type="button"><Trash2 size={16} /></button>
+                  </div>
+                ))}
+              </section>
+              {editingExitId !== null && editExitForm ? (
+                <form className="compact-form" onSubmit={editExitSubmit}>
+                  <h3>Edit Exit</h3>
+                  <Input label="Exit date" type="date" value={editExitForm.exitDate} onChange={(value) => setEditExitForm({ ...editExitForm, exitDate: value })} />
+                  <Input label="Exit price" type="number" value={editExitForm.exitPrice} onChange={(value) => setEditExitForm({ ...editExitForm, exitPrice: value })} />
+                  <Input label="Quantity" type="number" value={editExitForm.quantity} onChange={(value) => setEditExitForm({ ...editExitForm, quantity: value })} />
+                  <Input label="Reason" value={editExitForm.reason} onChange={(value) => setEditExitForm({ ...editExitForm, reason: value })} />
+                  <label><span>Emotional state</span><textarea value={editExitForm.emotionalState} onChange={(event) => setEditExitForm({ ...editExitForm, emotionalState: event.target.value })} /></label>
+                  <label><span>Notes</span><textarea value={editExitForm.notes} onChange={(event) => setEditExitForm({ ...editExitForm, notes: event.target.value })} /></label>
+                  <label><span>Append exit screenshots</span><input type="file" accept="image/*" multiple onChange={(event) => setEditExitFiles(filesFromInput(event.target.files))} /><small>{formatSelectedFileCount(editExitFiles)}</small></label>
+                  <div className="form-actions"><button className="primary" disabled={editExitSaving} type="submit">{editExitSaving ? "Saving..." : "Save Exit Changes"}</button><button className="ghost" type="button" onClick={() => setEditingExitId(null)}>Cancel</button></div>
+                </form>
+              ) : null}
+            </section>
+          ) : null}
+          {activeDrawerTab === "screenshots" ? (
+            <section className="drawer-tab-panel">
+              <ImageStrip screenshots={detail.screenshots} onPreview={setScreenshotPreviewIndex} />
+            </section>
+          ) : null}
+          {activeDrawerTab === "review" ? (
+            <section className="drawer-tab-panel">
+              <form className="compact-form no-divider" onSubmit={reviewSubmit}>
+                <h3>Review</h3>
+                {reviewSaveMessage ? <p className={reviewSaveStatus === "error" ? "form-message error" : "form-message success"}>{reviewSaveMessage}</p> : null}
+                <label><span>Followed plan</span><select value={review.followedPlan} onChange={(event) => updateReviewField({ followedPlan: event.target.value })}><option value="1">Yes</option><option value="0">No</option></select></label>
+                <Input label="Rule score 1-10" type="number" value={review.ruleScore} onChange={(value) => updateReviewField({ ruleScore: value })} />
+                <Input label="Discipline score 1-10" type="number" value={review.disciplineScore} onChange={(value) => updateReviewField({ disciplineScore: value })} />
+                <label><span>Lesson</span><textarea value={review.lesson} onChange={(event) => updateReviewField({ lesson: event.target.value })} /></label>
+                <div className="checklist">{props.referenceData.mistakeTags.map((tag) => <label className="check-row" key={tag.id}><input type="checkbox" onChange={(event) => updateReviewField({ mistakeIds: event.target.checked ? [...review.mistakeIds, tag.id] : review.mistakeIds.filter((id) => id !== tag.id) })} />{tag.label}</label>)}</div>
+                <button className="primary" disabled={reviewSaveStatus === "saving"} type="submit">{getReviewSaveButtonLabel(reviewSaveStatus)}</button>
+              </form>
+            </section>
+          ) : null}
         </div>
-        <div className="drawer-actions">
-          <button className="secondary inline-action" onClick={openTradeEditor} type="button"><Pencil size={16} /> Edit Trade</button>
-          <button className="danger" onClick={deleteTrade} type="button"><Trash2 size={16} /> Delete Trade</button>
-          <button aria-label="Close trade panel" className="icon-secondary" onClick={requestClose} type="button"><X size={18} /></button>
-        </div>
-      </header>
-      <div className="drawer-content">
-      <div className="two-col">
-        <Metric label="Entry" value={money(detail.trade.entryPrice)} />
-        <Metric label="Remaining" value={`${detail.summary.remainingQuantity}/${detail.trade.quantity}`} />
-        <Metric label="Realized P&L" value={money(detail.summary.realizedPnl)} />
-        <Metric label="Impact %" value={formatSignedPercent(detail.summary.portfolioImpactPercentage)} tone={detail.summary.portfolioImpactPercentage >= 0 ? "good" : "bad"} />
-        <Metric label="Final R" value={String(detail.summary.finalRMultiple)} />
-        <Metric label="Planned risk" value={money(detail.trade.plannedRiskAmount)} />
-        <Metric label="Actual risk" value={money(detail.trade.actualRisk)} />
-        <Metric label="Risk used" value={`${detail.trade.riskUsedPercentage}%`} />
-        <Metric label="Initial SL" value={money(detail.trade.stopLoss)} />
-        <Metric label="Active SL" value={money(detail.trade.activeStopLoss)} />
-        <Metric label="Current open risk" value={money(calculateCurrentOpenRisk(detail.trade, detail.summary.remainingQuantity))} />
-        <Metric label="Current price" value={detail.trade.currentPrice === null ? "-" : money(detail.trade.currentPrice)} />
-        <Metric label="Unrealized P&L" value={money(detail.trade.unrealizedPnl)} tone={getNumberTone(detail.trade.unrealizedPnl)} />
-        <Metric label="Unrealized R" value={formatR(detail.trade.unrealizedR)} tone={getNumberTone(detail.trade.unrealizedR)} />
-        <Metric label="Unrealized Impact %" value={formatSignedPercent(detail.trade.unrealizedPortfolioImpactPercentage)} tone={getNumberTone(detail.trade.unrealizedPortfolioImpactPercentage)} />
-        <Metric label="Current price updated" value={detail.trade.currentPriceUpdatedAt ? formatTimestamp(detail.trade.currentPriceUpdatedAt) : "-"} />
-        <Metric label="Position value" value={money(detail.trade.positionValue)} />
-        <Metric label="Position %" value={formatPercent(detail.trade.positionSizePercentage)} />
-      </div>
-      <ImageStrip screenshots={detail.screenshots} onPreview={setScreenshotPreviewIndex} />
-      {detail.trade.status !== "closed" ? (
-        <form className="compact-form" onSubmit={currentPriceSubmit}>
-          <h3>Current Price</h3>
-          <Input label="Current price" type="number" value={currentPrice} onChange={setCurrentPrice} required />
-          <div className="two-col">
-            <div className="derived-metric"><span>Unrealized P&L</span><strong>{money(calculateUnrealizedPnlFromValue(detail.trade.entryPrice, Number(currentPrice), detail.summary.remainingQuantity))}</strong></div>
-            <div className="derived-metric"><span>Unrealized R</span><strong>{formatR(calculateUnrealizedRFromValue(detail.trade, Number(currentPrice), detail.summary.remainingQuantity))}</strong></div>
-          </div>
-          <button className="primary" disabled={currentPriceSaving} type="submit">{currentPriceSaving ? "Saving..." : "Save Current Price"}</button>
-        </form>
-      ) : null}
-      {detail.trade.status !== "closed" ? (
-        <form className="compact-form" onSubmit={activeStopSubmit}>
-          <h3>Active Stop</h3>
-          <Input label="Active stop" type="number" value={activeStopLoss} onChange={setActiveStopLoss} required />
-          <div className="derived-metric"><span>Current open risk</span><strong>{money(calculateCurrentOpenRiskFromValue(detail.trade.entryPrice, Number(activeStopLoss), detail.summary.remainingQuantity))}</strong></div>
-          <div className="form-actions">
-            <button className="primary" disabled={activeStopSaving} type="submit">{activeStopSaving ? "Saving..." : "Save Active Stop"}</button>
-            <button className="secondary" onClick={moveActiveStopToBreakeven} type="button">Move to Breakeven</button>
-          </div>
-        </form>
-      ) : null}
-      {editTradeOpen && editTradeForm ? (
-        <form className="compact-form" onSubmit={editTradeSubmit}>
-          <h3>Edit Trade</h3>
-          <Input label="Symbol" value={editTradeForm.symbol} onChange={(value) => setEditTradeForm({ ...editTradeForm, symbol: value })} required />
-          <Input label="Entry date" type="date" value={editTradeForm.entryDate} onChange={(value) => setEditTradeForm({ ...editTradeForm, entryDate: value })} required />
-          <Input label="Entry price" type="number" value={editTradeForm.entryPrice} onChange={(value) => setEditTradeForm(updateEntryPrice(editTradeForm, value))} required />
-          <Input label="Quantity" type="number" value={editTradeForm.quantity} onChange={(value) => setEditTradeForm({ ...editTradeForm, quantity: value })} required />
-          <StopLossControl
-            percentage={editTradeForm.stopLossPercentage}
-            price={editTradeForm.stopLoss}
-            onPercentageChange={(value) => setEditTradeForm(updateStopLossPercentage(editTradeForm, value))}
-            onPriceChange={(value) => setEditTradeForm(updateStopLossPrice(editTradeForm, value))}
-          />
-          {detail.trade.status !== "closed" ? <Input label="Current price" type="number" value={editTradeForm.currentPrice} onChange={(value) => setEditTradeForm({ ...editTradeForm, currentPrice: value })} /> : null}
-          <Input label="Active stop" type="number" value={editTradeForm.activeStopLoss} onChange={(value) => setEditTradeForm({ ...editTradeForm, activeStopLoss: value })} required />
-          <Input label="Risk %" type="number" value={editTradeForm.riskPercentage} onChange={(value) => setEditTradeForm({ ...editTradeForm, riskPercentage: value })} required />
-          <Input label="Risk capital base" type="number" value={editTradeForm.riskCapitalBase} onChange={(value) => setEditTradeForm({ ...editTradeForm, riskCapitalBase: value })} required />
-          <div className="derived-metric"><span>Planned risk</span><strong>{money(Number(editTradeForm.riskCapitalBase) * (Number(editTradeForm.riskPercentage) / 100))}</strong></div>
-          <div className="derived-metric"><span>Actual risk</span><strong>{money(Math.max(Number(editTradeForm.entryPrice) - Number(editTradeForm.stopLoss), 0) * Number(editTradeForm.quantity || 0))}</strong></div>
-          <div className="derived-metric"><span>Risk used</span><strong>{formatRiskUsed(editTradeForm)}%</strong></div>
-          <label><span>Setup</span><select value={editTradeForm.setupId} onChange={(event) => setEditTradeForm({ ...editTradeForm, setupId: event.target.value })}><option value="">Select setup</option>{props.referenceData.setups.map((setup) => <option key={setup.id} value={setup.id}>{setup.name}</option>)}</select></label>
-          <label><span>Entry Method</span><select value={editTradeForm.entryMethodId} onChange={(event) => setEditTradeForm({ ...editTradeForm, entryMethodId: event.target.value })}><option value="">Select entry method</option>{props.referenceData.entryMethods.map((entryMethod) => <option key={entryMethod.id} value={entryMethod.id}>{entryMethod.name}</option>)}</select></label>
-          <Input label="Confidence 1-5" type="number" value={editTradeForm.confidence} onChange={(value) => setEditTradeForm({ ...editTradeForm, confidence: value })} />
-          <label><span>Entry reason</span><textarea value={editTradeForm.entryReason} onChange={(event) => setEditTradeForm({ ...editTradeForm, entryReason: event.target.value })} /></label>
-          <label><span>Emotional state</span><textarea value={editTradeForm.emotionalState} onChange={(event) => setEditTradeForm({ ...editTradeForm, emotionalState: event.target.value })} /></label>
-          <label><span>Notes</span><textarea value={editTradeForm.notes} onChange={(event) => setEditTradeForm({ ...editTradeForm, notes: event.target.value })} /></label>
-          <label><span>Append entry screenshots</span><input type="file" accept="image/*" multiple onChange={(event) => setEditTradeFiles(filesFromInput(event.target.files))} /><small>{formatSelectedFileCount(editTradeFiles)}</small></label>
-          <div className="checklist">{props.referenceData.checklistItems.map((item) => <label className="check-row" key={item.id}><input checked={Boolean(editTradeChecks[item.id])} type="checkbox" onChange={(event) => setEditTradeChecks({ ...editTradeChecks, [item.id]: event.target.checked })} />{item.label}</label>)}</div>
-          <div className="form-actions"><button className="primary" disabled={editTradeSaving} type="submit">{editTradeSaving ? "Saving..." : "Save Trade Changes"}</button><button className="ghost" type="button" onClick={() => setEditTradeOpen(false)}>Cancel</button></div>
-        </form>
-      ) : null}
-      <form className="compact-form" onSubmit={addExitSubmit}>
-        <h3>Add Exit</h3>
-        <Input label="Exit date" type="date" value={exitForm.exitDate} onChange={(value) => setExitForm({ ...exitForm, exitDate: value })} />
-        <Input label="Exit price" type="number" value={exitForm.exitPrice} onChange={(value) => setExitForm({ ...exitForm, exitPrice: value })} />
-        <Input label="Quantity" type="number" value={exitForm.quantity} onChange={(value) => setExitForm({ ...exitForm, quantity: value })} />
-        <Input label="Reason" value={exitForm.reason} onChange={(value) => setExitForm({ ...exitForm, reason: value })} />
-        <label><span>Exit screenshots</span><input key={exitFileInputKey} type="file" accept="image/*" multiple onChange={(event) => setExitFiles(filesFromInput(event.target.files))} /><small>{formatSelectedFileCount(exitFiles)}</small></label>
-        <button className="primary" disabled={addExitSaving} type="submit">{addExitSaving ? "Saving..." : "Save Exit"}</button>
-      </form>
-      <section>
-        <h3>Exits</h3>
-        {detail.exits.map((exit) => (
-          <div className="row exit-row" key={exit.id}>
-            <span>{exit.exitDate} · {exit.quantity} @ {money(exit.exitPrice)}</span>
-            <strong>{money(exit.pnl)} · {exit.rMultiple}R</strong>
-            <button aria-label={`Edit exit ${exit.exitDate}`} className="icon-secondary" onClick={() => openExitEditor(exit)} type="button"><Pencil size={16} /></button>
-            <button aria-label={`Delete exit ${exit.exitDate}`} className="icon-danger" onClick={() => deleteExit(exit.id)} type="button"><Trash2 size={16} /></button>
-          </div>
-        ))}
-      </section>
-      {editingExitId !== null && editExitForm ? (
-        <form className="compact-form" onSubmit={editExitSubmit}>
-          <h3>Edit Exit</h3>
-          <Input label="Exit date" type="date" value={editExitForm.exitDate} onChange={(value) => setEditExitForm({ ...editExitForm, exitDate: value })} />
-          <Input label="Exit price" type="number" value={editExitForm.exitPrice} onChange={(value) => setEditExitForm({ ...editExitForm, exitPrice: value })} />
-          <Input label="Quantity" type="number" value={editExitForm.quantity} onChange={(value) => setEditExitForm({ ...editExitForm, quantity: value })} />
-          <Input label="Reason" value={editExitForm.reason} onChange={(value) => setEditExitForm({ ...editExitForm, reason: value })} />
-          <label><span>Emotional state</span><textarea value={editExitForm.emotionalState} onChange={(event) => setEditExitForm({ ...editExitForm, emotionalState: event.target.value })} /></label>
-          <label><span>Notes</span><textarea value={editExitForm.notes} onChange={(event) => setEditExitForm({ ...editExitForm, notes: event.target.value })} /></label>
-          <label><span>Append exit screenshots</span><input type="file" accept="image/*" multiple onChange={(event) => setEditExitFiles(filesFromInput(event.target.files))} /><small>{formatSelectedFileCount(editExitFiles)}</small></label>
-          <div className="form-actions"><button className="primary" disabled={editExitSaving} type="submit">{editExitSaving ? "Saving..." : "Save Exit Changes"}</button><button className="ghost" type="button" onClick={() => setEditingExitId(null)}>Cancel</button></div>
-        </form>
-      ) : null}
-      <form className="compact-form" onSubmit={reviewSubmit}>
-        <h3>Review</h3>
-        {reviewSaveMessage ? <p className={reviewSaveStatus === "error" ? "form-message error" : "form-message success"}>{reviewSaveMessage}</p> : null}
-        <label><span>Followed plan</span><select value={review.followedPlan} onChange={(event) => updateReviewField({ followedPlan: event.target.value })}><option value="1">Yes</option><option value="0">No</option></select></label>
-        <Input label="Rule score 1-10" type="number" value={review.ruleScore} onChange={(value) => updateReviewField({ ruleScore: value })} />
-        <Input label="Discipline score 1-10" type="number" value={review.disciplineScore} onChange={(value) => updateReviewField({ disciplineScore: value })} />
-        <label><span>Lesson</span><textarea value={review.lesson} onChange={(event) => updateReviewField({ lesson: event.target.value })} /></label>
-        <div className="checklist">{props.referenceData.mistakeTags.map((tag) => <label className="check-row" key={tag.id}><input type="checkbox" onChange={(event) => updateReviewField({ mistakeIds: event.target.checked ? [...review.mistakeIds, tag.id] : review.mistakeIds.filter((id) => id !== tag.id) })} />{tag.label}</label>)}</div>
-        <button className="primary" disabled={reviewSaveStatus === "saving"} type="submit">{getReviewSaveButtonLabel(reviewSaveStatus)}</button>
-      </form>
-      </div>
       </aside>
       {confirmDialog ? (
         <ConfirmDialog

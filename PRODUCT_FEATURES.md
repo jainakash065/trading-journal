@@ -633,6 +633,15 @@ Implemented:
 Drawer usability:
 
 - Sticky header with symbol, status, edit/delete actions, and X close.
+- Tabbed detail layout:
+  - Overview.
+  - Plan.
+  - Manage.
+  - Exits.
+  - Screenshots.
+  - Review.
+- Header `Edit Trade` action switches to the Plan tab and shows the edit form immediately.
+- Exit edit actions switch to the Exits tab and show the exit edit form immediately.
 - Close by X.
 - Close by Escape.
 - Close by backdrop click.

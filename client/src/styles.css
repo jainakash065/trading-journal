@@ -1006,7 +1006,7 @@ small {
 .r-target-row {
   display: grid;
   gap: 10px;
-  grid-template-columns: .65fr 1fr 1.2fr 1fr;
+  grid-template-columns: .65fr 1fr 1.2fr;
   padding: 9px 12px;
 }
 

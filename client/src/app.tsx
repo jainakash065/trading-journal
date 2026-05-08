@@ -1590,13 +1590,12 @@ function RTargetsTable(props: { readonly trade: Trade }): JSX.Element {
       <h3>R Targets</h3>
       {rows.length === 0 ? <p className="muted">R targets are unavailable because this trade has no positive initial per-share risk.</p> : (
         <div className="r-target-table">
-          <div className="r-target-head"><span>R</span><span>Move %</span><span>Price</span><span>Status</span></div>
+          <div className="r-target-head"><span>R</span><span>Move %</span><span>Price</span></div>
           {rows.map((row: RTargetRow) => (
             <div className={row.rLevel === completedRLevel ? "r-target-row current-zone" : "r-target-row"} key={row.rLevel}>
               <span>{row.rLevel}R</span>
               <span>{formatPercent(row.movePercentage)}</span>
               <strong>{formatPrice(row.price)}</strong>
-              <span>{row.rLevel === completedRLevel ? "Current zone" : ""}</span>
             </div>
           ))}
         </div>

@@ -629,6 +629,8 @@ Implemented:
 - Active stop quick edit.
 - Move active stop to breakeven action.
 - Current price quick edit.
+- Open-trade-only R target table from `1R` to `25R` in the Manage tab.
+- R target prices use original entry risk from entry price and initial stop loss, not active stop loss.
 
 Drawer usability:
 

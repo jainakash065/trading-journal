@@ -1,6 +1,7 @@
 import { Activity, BarChart3, BookOpen, ChartNoAxesCombined, ChevronLeft, ChevronRight, ClipboardCheck, IndianRupee, Pencil, Plus, Settings as SettingsIcon, Trash2, X } from "lucide-react";
 import { FormEvent, type PointerEvent, useEffect, useState } from "react";
 import { apiDelete, apiGet, apiSend, endpoints, type AppData, type ClosedTradeFilters, type ClosedTradeOutcomeFilter, type MarketHoliday, type ReferenceData, uploadScreenshots } from "./api";
+import { generateRTargetRows, type RTargetRow } from "./r-targets";
 import type { CapitalCurvePoint, Dashboard, DashboardPeriodKey, EntryMethodAnalyticsRow, LastNTradeCount, PagedTrades, RDistributionBucket, Settings, SetupAnalyticsRow, SetupEntryMethodAnalyticsRow, Trade, TradeExit } from "./types";
 
 type View = "dashboard" | "analytics" | "new" | "open" | "closed" | "settings";
@@ -1284,6 +1285,7 @@ function TradeDetail(props: { readonly tradeId: number; readonly referenceData: 
                       <button className="secondary" onClick={moveActiveStopToBreakeven} type="button">Move to Breakeven</button>
                     </div>
                   </form>
+                  <RTargetsTable trade={detail.trade} />
                 </div>
               ) : (
                 <div className="two-col">
@@ -1573,8 +1575,36 @@ function ImagePreviewModal(props: {
   );
 }
 
+function RTargetsTable(props: { readonly trade: Trade }): JSX.Element {
+  const rows: readonly RTargetRow[] = generateRTargetRows({
+    entryPrice: props.trade.entryPrice,
+    stopLoss: props.trade.stopLoss
+  });
+  return (
+    <section className="compact-form r-targets-panel">
+      <h3>R Targets</h3>
+      {rows.length === 0 ? <p className="muted">R targets are unavailable because this trade has no positive initial per-share risk.</p> : (
+        <div className="r-target-table">
+          <div className="r-target-head"><span>R</span><span>Move %</span><span>Price</span></div>
+          {rows.map((row: RTargetRow) => (
+            <div className="r-target-row" key={row.rLevel}>
+              <span>{row.rLevel}R</span>
+              <span>{formatPercent(row.movePercentage)}</span>
+              <strong>{formatPrice(row.price)}</strong>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function money(value: number): string {
   return new Intl.NumberFormat("en-IN", { currency: "INR", maximumFractionDigits: 0, style: "currency" }).format(value);
+}
+
+function formatPrice(value: number): string {
+  return new Intl.NumberFormat("en-IN", { currency: "INR", maximumFractionDigits: 2, minimumFractionDigits: 2, style: "currency" }).format(value);
 }
 
 function formatOptionalMoney(value: number | null): string {

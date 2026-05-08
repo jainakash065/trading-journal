@@ -990,6 +990,46 @@ small {
   padding-top: 0;
 }
 
+.r-targets-panel {
+  max-width: 100%;
+}
+
+.r-target-table {
+  border: 1px solid #ece7dd;
+  border-radius: 8px;
+  display: grid;
+  max-height: 360px;
+  overflow: auto;
+}
+
+.r-target-head,
+.r-target-row {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: .65fr 1fr 1.2fr;
+  padding: 9px 12px;
+}
+
+.r-target-head {
+  background: #e9e1d3;
+  color: #56616a;
+  font-size: 12px;
+  font-weight: 800;
+  position: sticky;
+  text-transform: uppercase;
+  top: 0;
+}
+
+.r-target-row {
+  border-top: 1px solid #ece7dd;
+}
+
+.r-target-row.current-zone {
+  background: #e9f3ed;
+  color: #176236;
+  font-weight: 800;
+}
+
 .form-actions {
   display: flex;
   gap: 10px;

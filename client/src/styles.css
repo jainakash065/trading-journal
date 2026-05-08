@@ -1006,7 +1006,7 @@ small {
 .r-target-row {
   display: grid;
   gap: 10px;
-  grid-template-columns: .65fr 1fr 1.2fr;
+  grid-template-columns: .65fr 1fr 1.2fr 1fr;
   padding: 9px 12px;
 }
 
@@ -1022,6 +1022,12 @@ small {
 
 .r-target-row {
   border-top: 1px solid #ece7dd;
+}
+
+.r-target-row.current-zone {
+  background: #e9f3ed;
+  color: #176236;
+  font-weight: 800;
 }
 
 .form-actions {

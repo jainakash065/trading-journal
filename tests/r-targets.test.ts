@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { generateRTargetRows } from "../client/src/r-targets";
+import { calculateCompletedRLevel, generateRTargetRows } from "../client/src/r-targets";
 
 describe("R target rows", () => {
   it("generates target price and move percentage for each R level", () => {
@@ -15,5 +15,18 @@ describe("R target rows", () => {
     expect(generateRTargetRows({ entryPrice: 100, stopLoss: 105 })).toEqual([]);
     expect(generateRTargetRows({ entryPrice: 0, stopLoss: 95 })).toEqual([]);
   });
-});
 
+  it("calculates the completed R level from current price", () => {
+    expect(calculateCompletedRLevel({ entryPrice: 100, stopLoss: 97.5, currentPrice: 108 })).toBe(3);
+    expect(calculateCompletedRLevel({ entryPrice: 100, stopLoss: 97.5, currentPrice: 107.5 })).toBe(3);
+    expect(calculateCompletedRLevel({ entryPrice: 100, stopLoss: 97.5, currentPrice: 200 })).toBe(25);
+  });
+
+  it("does not highlight when current price has not completed 1R", () => {
+    expect(calculateCompletedRLevel({ entryPrice: 100, stopLoss: 97.5, currentPrice: null })).toBeNull();
+    expect(calculateCompletedRLevel({ entryPrice: 100, stopLoss: 97.5, currentPrice: 100 })).toBeNull();
+    expect(calculateCompletedRLevel({ entryPrice: 100, stopLoss: 97.5, currentPrice: 99 })).toBeNull();
+    expect(calculateCompletedRLevel({ entryPrice: 100, stopLoss: 97.5, currentPrice: 102 })).toBeNull();
+    expect(calculateCompletedRLevel({ entryPrice: 100, stopLoss: 100, currentPrice: 120 })).toBeNull();
+  });
+});

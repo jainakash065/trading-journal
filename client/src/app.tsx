@@ -1,7 +1,7 @@
 import { Activity, BarChart3, BookOpen, ChartNoAxesCombined, ChevronLeft, ChevronRight, ClipboardCheck, IndianRupee, Pencil, Plus, Settings as SettingsIcon, Trash2, X } from "lucide-react";
 import { FormEvent, type PointerEvent, useEffect, useState } from "react";
 import { apiDelete, apiGet, apiSend, endpoints, type AppData, type ClosedTradeFilters, type ClosedTradeOutcomeFilter, type MarketHoliday, type ReferenceData, uploadScreenshots } from "./api";
-import { generateRTargetRows, type RTargetRow } from "./r-targets";
+import { calculateCompletedRLevel, generateRTargetRows, type RTargetRow } from "./r-targets";
 import type { CapitalCurvePoint, Dashboard, DashboardPeriodKey, EntryMethodAnalyticsRow, LastNTradeCount, PagedTrades, RDistributionBucket, Settings, SetupAnalyticsRow, SetupEntryMethodAnalyticsRow, Trade, TradeExit } from "./types";
 
 type View = "dashboard" | "analytics" | "new" | "open" | "closed" | "settings";
@@ -1580,17 +1580,23 @@ function RTargetsTable(props: { readonly trade: Trade }): JSX.Element {
     entryPrice: props.trade.entryPrice,
     stopLoss: props.trade.stopLoss
   });
+  const completedRLevel: number | null = calculateCompletedRLevel({
+    currentPrice: props.trade.currentPrice,
+    entryPrice: props.trade.entryPrice,
+    stopLoss: props.trade.stopLoss
+  });
   return (
     <section className="compact-form r-targets-panel">
       <h3>R Targets</h3>
       {rows.length === 0 ? <p className="muted">R targets are unavailable because this trade has no positive initial per-share risk.</p> : (
         <div className="r-target-table">
-          <div className="r-target-head"><span>R</span><span>Move %</span><span>Price</span></div>
+          <div className="r-target-head"><span>R</span><span>Move %</span><span>Price</span><span>Status</span></div>
           {rows.map((row: RTargetRow) => (
-            <div className="r-target-row" key={row.rLevel}>
+            <div className={row.rLevel === completedRLevel ? "r-target-row current-zone" : "r-target-row"} key={row.rLevel}>
               <span>{row.rLevel}R</span>
               <span>{formatPercent(row.movePercentage)}</span>
               <strong>{formatPrice(row.price)}</strong>
+              <span>{row.rLevel === completedRLevel ? "Current zone" : ""}</span>
             </div>
           ))}
         </div>

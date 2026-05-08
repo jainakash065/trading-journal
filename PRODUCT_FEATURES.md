@@ -631,6 +631,8 @@ Implemented:
 - Current price quick edit.
 - Open-trade-only R target table from `1R` to `25R` in the Manage tab.
 - R target prices use original entry risk from entry price and initial stop loss, not active stop loss.
+- R target table highlights the closest completed R level based on manual current price.
+- No R target row is highlighted when current price is missing, at a loss, or below `1R`.
 
 Drawer usability:
 

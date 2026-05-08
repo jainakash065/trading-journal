@@ -22,3 +22,20 @@ export function generateRTargetRows(params: {
   });
 }
 
+export function calculateCompletedRLevel(params: {
+  readonly currentPrice: number | null;
+  readonly entryPrice: number;
+  readonly stopLoss: number;
+  readonly maxR?: number;
+}): number | null {
+  const maxR: number = params.maxR ?? 25;
+  const riskPerShare: number = params.entryPrice - params.stopLoss;
+  if (params.currentPrice === null || params.entryPrice <= 0 || riskPerShare <= 0 || maxR <= 0) {
+    return null;
+  }
+  const currentR: number = (params.currentPrice - params.entryPrice) / riskPerShare;
+  if (currentR < 1) {
+    return null;
+  }
+  return Math.min(Math.floor(currentR), maxR);
+}

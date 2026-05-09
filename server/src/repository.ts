@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 import fs from "node:fs";
 import { calculateExitPnl, calculateExitRMultiple, calculatePlannedRiskAmount, summarizeTrade } from "./calculations";
-import type { ExitRow, MarketHolidayRow, ReviewRow, ScreenshotRow, TradeRow } from "./types";
+import type { ExitRow, MarketHolidayRow, ReviewDetailRow, ReviewRow, ScreenshotRow, TradeRow } from "./types";
 
 type ListItem = {
   readonly id: number;
@@ -641,14 +641,24 @@ export function listChecklistResponses(db: Database.Database, tradeId: number): 
   return rows.map((row) => ({ itemId: row.itemId, checked: row.checked === 1, notes: row.notes }));
 }
 
-export function getReview(db: Database.Database, tradeId: number): ReviewRow | undefined {
-  return db.prepare(`
+export function getReview(db: Database.Database, tradeId: number): ReviewDetailRow | undefined {
+  const review = db.prepare(`
     SELECT trade_id AS tradeId, followed_plan AS followedPlan, rule_score AS ruleScore,
       discipline_score AS disciplineScore, went_well AS wentWell, went_wrong AS wentWrong,
       lesson, repeat_next_time AS repeatNextTime, avoid_next_time AS avoidNextTime
     FROM trade_reviews
     WHERE trade_id = ?
   `).get(tradeId) as ReviewRow | undefined;
+  if (!review) {
+    return undefined;
+  }
+  const mistakeRows = db.prepare(`
+    SELECT mistake_id AS mistakeId
+    FROM trade_mistakes
+    WHERE trade_id = ?
+    ORDER BY mistake_id
+  `).all(tradeId) as { readonly mistakeId: number }[];
+  return { ...review, mistakeIds: mistakeRows.map((row) => row.mistakeId) };
 }
 
 export function updateReview(db: Database.Database, tradeId: number, input: Omit<ReviewRow, "tradeId"> & { readonly mistakeIds: readonly number[] }): void {

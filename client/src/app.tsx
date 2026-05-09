@@ -88,10 +88,53 @@ type ScreenshotPreview = {
   readonly type: string;
 };
 
+type ReviewDetail = {
+  readonly tradeId: number;
+  readonly followedPlan: number;
+  readonly ruleScore: number;
+  readonly disciplineScore: number;
+  readonly wentWell: string;
+  readonly wentWrong: string;
+  readonly lesson: string;
+  readonly repeatNextTime: string;
+  readonly avoidNextTime: string;
+  readonly mistakeIds: readonly number[];
+};
+
+type ReviewFormState = {
+  readonly followedPlan: string;
+  readonly ruleScore: string;
+  readonly disciplineScore: string;
+  readonly wentWell: string;
+  readonly wentWrong: string;
+  readonly lesson: string;
+  readonly repeatNextTime: string;
+  readonly avoidNextTime: string;
+  readonly mistakeIds: readonly number[];
+};
+
 type ReviewSaveStatus = "idle" | "saving" | "saved" | "error";
 
 function createEmptyExitForm(): ExitFormState {
   return { exitDate: today, exitPrice: "", quantity: "", reason: "", emotionalState: "", notes: "" };
+}
+
+function createDefaultReviewForm(): ReviewFormState {
+  return { followedPlan: "1", ruleScore: "5", disciplineScore: "5", wentWell: "", wentWrong: "", lesson: "", repeatNextTime: "", avoidNextTime: "", mistakeIds: [] };
+}
+
+function createReviewFormFromDetail(review: ReviewDetail): ReviewFormState {
+  return {
+    followedPlan: String(review.followedPlan),
+    ruleScore: String(review.ruleScore),
+    disciplineScore: String(review.disciplineScore),
+    wentWell: review.wentWell,
+    wentWrong: review.wentWrong,
+    lesson: review.lesson,
+    repeatNextTime: review.repeatNextTime,
+    avoidNextTime: review.avoidNextTime,
+    mistakeIds: review.mistakeIds
+  };
 }
 
 export function App(): JSX.Element {
@@ -890,7 +933,7 @@ function TradesTable(props: { readonly mode: "open" | "closed"; readonly trades:
 }
 
 function TradeDetail(props: { readonly tradeId: number; readonly referenceData: ReferenceData; readonly onClose: () => void; readonly onChanged: () => Promise<void>; readonly onDeleted: () => Promise<void> }): JSX.Element {
-  const [detail, setDetail] = useState<{ readonly trade: Trade; readonly exits: readonly TradeExit[]; readonly summary: Trade["summary"]; readonly screenshots: readonly { readonly id: number; readonly type: string; readonly url: string; readonly exitId: number | null }[]; readonly checklistResponses: readonly { readonly itemId: number; readonly checked: boolean; readonly notes: string }[]; readonly review?: Record<string, string | number> } | null>(null);
+  const [detail, setDetail] = useState<{ readonly trade: Trade; readonly exits: readonly TradeExit[]; readonly summary: Trade["summary"]; readonly screenshots: readonly { readonly id: number; readonly type: string; readonly url: string; readonly exitId: number | null }[]; readonly checklistResponses: readonly { readonly itemId: number; readonly checked: boolean; readonly notes: string }[]; readonly review?: ReviewDetail } | null>(null);
   const [exitFiles, setExitFiles] = useState<readonly File[]>([]);
   const [exitFileInputKey, setExitFileInputKey] = useState(0);
   const [exitForm, setExitForm] = useState<ExitFormState>(createEmptyExitForm);
@@ -909,7 +952,7 @@ function TradeDetail(props: { readonly tradeId: number; readonly referenceData: 
   const [editExitFiles, setEditExitFiles] = useState<readonly File[]>([]);
   const [editExitForm, setEditExitForm] = useState<ExitFormState | null>(null);
   const [editExitSaving, setEditExitSaving] = useState(false);
-  const [review, setReview] = useState({ followedPlan: "1", ruleScore: "5", disciplineScore: "5", wentWell: "", wentWrong: "", lesson: "", repeatNextTime: "", avoidNextTime: "", mistakeIds: [] as number[] });
+  const [review, setReview] = useState<ReviewFormState>(createDefaultReviewForm);
   const [reviewSaveStatus, setReviewSaveStatus] = useState<ReviewSaveStatus>("idle");
   const [reviewSaveMessage, setReviewSaveMessage] = useState("");
   const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState | null>(null);
@@ -922,6 +965,9 @@ function TradeDetail(props: { readonly tradeId: number; readonly referenceData: 
     if (loaded?.trade) {
       setActiveStopLoss(String(loaded.trade.activeStopLoss));
       setCurrentPrice(loaded.trade.currentPrice === null ? "" : String(loaded.trade.currentPrice));
+      setReview(loaded.review ? createReviewFormFromDetail(loaded.review) : createDefaultReviewForm());
+      setReviewSaveStatus("idle");
+      setReviewSaveMessage("");
     }
   };
   useEffect(() => {
@@ -988,6 +1034,7 @@ function TradeDetail(props: { readonly tradeId: number; readonly referenceData: 
       </div>
     );
   }
+  const hasSavedReview: boolean = detail.review !== undefined;
   const addExitSubmit = async (event: FormEvent): Promise<void> => {
     event.preventDefault();
     if (addExitSaving) {
@@ -1378,12 +1425,13 @@ function TradeDetail(props: { readonly tradeId: number; readonly referenceData: 
               <form className="compact-form no-divider" onSubmit={reviewSubmit}>
                 <h3>Review</h3>
                 {reviewSaveMessage ? <p className={reviewSaveStatus === "error" ? "form-message error" : "form-message success"}>{reviewSaveMessage}</p> : null}
+                {!reviewSaveMessage ? <p className="muted">{hasSavedReview ? "Review saved" : "No review saved yet"}</p> : null}
                 <label><span>Followed plan</span><select value={review.followedPlan} onChange={(event) => updateReviewField({ followedPlan: event.target.value })}><option value="1">Yes</option><option value="0">No</option></select></label>
                 <Input label="Rule score 1-10" type="number" value={review.ruleScore} onChange={(value) => updateReviewField({ ruleScore: value })} />
                 <Input label="Discipline score 1-10" type="number" value={review.disciplineScore} onChange={(value) => updateReviewField({ disciplineScore: value })} />
                 <label><span>Lesson</span><textarea value={review.lesson} onChange={(event) => updateReviewField({ lesson: event.target.value })} /></label>
-                <div className="checklist">{props.referenceData.mistakeTags.map((tag) => <label className="check-row" key={tag.id}><input type="checkbox" onChange={(event) => updateReviewField({ mistakeIds: event.target.checked ? [...review.mistakeIds, tag.id] : review.mistakeIds.filter((id) => id !== tag.id) })} />{tag.label}</label>)}</div>
-                <button className="primary" disabled={reviewSaveStatus === "saving"} type="submit">{getReviewSaveButtonLabel(reviewSaveStatus)}</button>
+                <div className="checklist">{props.referenceData.mistakeTags.map((tag) => <label className="check-row" key={tag.id}><input checked={review.mistakeIds.includes(tag.id)} type="checkbox" onChange={(event) => updateReviewField({ mistakeIds: event.target.checked ? [...review.mistakeIds, tag.id] : review.mistakeIds.filter((id) => id !== tag.id) })} />{tag.label}</label>)}</div>
+                <button className="primary" disabled={reviewSaveStatus === "saving"} type="submit">{getReviewSaveButtonLabel(reviewSaveStatus, hasSavedReview)}</button>
               </form>
             </section>
           ) : null}
@@ -1853,12 +1901,12 @@ function calculateUnrealizedRFromValue(trade: Trade, currentPrice: number, remai
   return calculateUnrealizedPnlFromValue(trade.entryPrice, currentPrice, remainingQuantity) / tradeRisk;
 }
 
-function getReviewSaveButtonLabel(status: ReviewSaveStatus): string {
+function getReviewSaveButtonLabel(status: ReviewSaveStatus, hasSavedReview: boolean): string {
   if (status === "saving") {
     return "Saving...";
   }
   if (status === "saved") {
     return "Saved";
   }
-  return "Save Review";
+  return hasSavedReview ? "Save Review" : "Create Review";
 }

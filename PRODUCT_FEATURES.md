@@ -367,8 +367,11 @@ Implemented:
 - Discipline score.
 - Mistake tags.
 - Lesson learned.
+- Existing saved reviews hydrate the drawer Review tab exactly from stored data.
+- Trades without a saved review show `No review saved yet` before creating a review.
 - Save review button states:
   - Save Review.
+  - Create Review.
   - Saving...
   - Saved.
   - Error message on failure.

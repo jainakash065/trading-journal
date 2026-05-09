@@ -116,6 +116,17 @@ type SetupEntryMethodAnalyticsRow = {
   readonly pnl: number;
 };
 
+type RuleAdherenceAnalyticsRow = {
+  readonly category: string;
+  readonly closedTrades: number;
+  readonly winRate: number;
+  readonly rExpectancy: number;
+  readonly averageWinningR: number;
+  readonly averageLosingR: number;
+  readonly medianR: number;
+  readonly pnl: number;
+};
+
 export type Dashboard = {
   readonly period: DashboardPeriod;
   readonly capitalHistoryStartDate: string;
@@ -165,6 +176,7 @@ export type Dashboard = {
   readonly setupAnalytics: readonly SetupAnalyticsRow[];
   readonly entryMethodAnalytics: readonly EntryMethodAnalyticsRow[];
   readonly setupEntryMethodAnalytics: readonly SetupEntryMethodAnalyticsRow[];
+  readonly ruleAdherenceAnalytics: readonly RuleAdherenceAnalyticsRow[];
   readonly missingHolidayYear: number | null;
 };
 
@@ -249,6 +261,7 @@ export function buildDashboard(db: Database.Database, periodKey: DashboardPeriod
     setupAnalytics: calculateSetupAnalytics(periodTrades),
     entryMethodAnalytics: calculateEntryMethodAnalytics(periodTrades),
     setupEntryMethodAnalytics: calculateSetupEntryMethodAnalytics(periodTrades),
+    ruleAdherenceAnalytics: calculateRuleAdherenceAnalytics(periodTrades),
     missingHolidayYear: countMarketHolidaysForYear(db, today.getUTCFullYear()) === 0 ? today.getUTCFullYear() : null
   };
 }
@@ -449,6 +462,29 @@ function createSetupEntryMethodAnalyticsRow(params: { readonly setupName: string
     averageLosingR: analytics.averageLosingR,
     medianR: analytics.medianR,
     pnl: round(params.trades.reduce((total: number, trade: ClosedTradeMetric) => total + trade.realizedPnl, 0))
+  };
+}
+
+function calculateRuleAdherenceAnalytics(trades: readonly ClosedTradeMetric[]): readonly RuleAdherenceAnalyticsRow[] {
+  const categories: readonly { readonly category: string; readonly trades: readonly ClosedTradeMetric[] }[] = [
+    { category: "Rules Followed", trades: trades.filter((trade: ClosedTradeMetric) => trade.followedPlan === 1) },
+    { category: "Rules Broken", trades: trades.filter((trade: ClosedTradeMetric) => trade.followedPlan === 0) },
+    { category: "Not Reviewed", trades: trades.filter((trade: ClosedTradeMetric) => trade.followedPlan === null) }
+  ];
+  return categories.map((entry) => createRuleAdherenceAnalyticsRow(entry.category, entry.trades));
+}
+
+function createRuleAdherenceAnalyticsRow(category: string, trades: readonly ClosedTradeMetric[]): RuleAdherenceAnalyticsRow {
+  const analytics: RAnalytics = calculateRAnalytics(trades);
+  return {
+    category,
+    closedTrades: trades.length,
+    winRate: analytics.winPercentage,
+    rExpectancy: analytics.rExpectancy,
+    averageWinningR: analytics.averageWinningR,
+    averageLosingR: analytics.averageLosingR,
+    medianR: analytics.medianR,
+    pnl: round(trades.reduce((total: number, trade: ClosedTradeMetric) => total + trade.realizedPnl, 0))
   };
 }
 

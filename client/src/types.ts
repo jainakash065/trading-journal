@@ -163,6 +163,17 @@ export type SetupEntryMethodAnalyticsRow = {
   readonly pnl: number;
 };
 
+export type RuleAdherenceAnalyticsRow = {
+  readonly category: string;
+  readonly closedTrades: number;
+  readonly winRate: number;
+  readonly rExpectancy: number;
+  readonly averageWinningR: number;
+  readonly averageLosingR: number;
+  readonly medianR: number;
+  readonly pnl: number;
+};
+
 export type Dashboard = {
   readonly period: DashboardPeriod;
   readonly capitalHistoryStartDate: string;
@@ -212,5 +223,6 @@ export type Dashboard = {
   readonly setupAnalytics: readonly SetupAnalyticsRow[];
   readonly entryMethodAnalytics: readonly EntryMethodAnalyticsRow[];
   readonly setupEntryMethodAnalytics: readonly SetupEntryMethodAnalyticsRow[];
+  readonly ruleAdherenceAnalytics: readonly RuleAdherenceAnalyticsRow[];
   readonly missingHolidayYear: number | null;
 };

@@ -463,6 +463,10 @@ Implemented:
   - Period-aware table showing combined setup and entry trigger quality.
   - Sorts combinations by R expectancy, trade count, setup name, and entry method name.
   - Helps separate setup edge from entry execution edge.
+- Rule Adherence Analytics:
+  - Period-aware table comparing Rules Followed, Rules Broken, and Not Reviewed closed trades.
+  - Uses the review `Followed plan` field as the adherence signal.
+  - Shows closed trade count, win rate, R expectancy, average winning R, average losing R, median R, and total closed-trade P&L.
 - Period R Distribution:
   - Visual horizontal bar panel.
   - Shows R distribution for fully closed trades in the selected dashboard period.

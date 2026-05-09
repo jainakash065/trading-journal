@@ -2,7 +2,7 @@ import { Activity, BarChart3, BookOpen, ChartNoAxesCombined, ChevronLeft, Chevro
 import { FormEvent, type PointerEvent, useEffect, useState } from "react";
 import { apiDelete, apiGet, apiSend, endpoints, type AppData, type ClosedTradeFilters, type ClosedTradeOutcomeFilter, type MarketHoliday, type ReferenceData, uploadScreenshots } from "./api";
 import { calculateCompletedRLevel, generateRTargetRows, type RTargetRow } from "./r-targets";
-import type { CapitalCurvePoint, Dashboard, DashboardPeriodKey, EntryMethodAnalyticsRow, LastNTradeCount, PagedTrades, RDistributionBucket, Settings, SetupAnalyticsRow, SetupEntryMethodAnalyticsRow, Trade, TradeExit } from "./types";
+import type { CapitalCurvePoint, Dashboard, DashboardPeriodKey, EntryMethodAnalyticsRow, LastNTradeCount, PagedTrades, RDistributionBucket, RuleAdherenceAnalyticsRow, Settings, SetupAnalyticsRow, SetupEntryMethodAnalyticsRow, Trade, TradeExit } from "./types";
 
 type View = "dashboard" | "analytics" | "new" | "open" | "closed" | "settings";
 type DrawerTab = "overview" | "plan" | "manage" | "exits" | "screenshots" | "review";
@@ -312,6 +312,10 @@ function AnalyticsView(props: {
         <SetupEntryMethodAnalyticsPanel rows={d.setupEntryMethodAnalytics} />
       </section>
       <section className="dashboard-section">
+        <h3>Rule Adherence Analytics</h3>
+        <RuleAdherenceAnalyticsPanel rows={d.ruleAdherenceAnalytics} />
+      </section>
+      <section className="dashboard-section">
         <h3>R Distribution</h3>
         <RDistributionPanel buckets={d.rDistribution} subtitle={`${getDistributionTotal(d.rDistribution)} closed trades in this period`} title="Period R Distribution" />
       </section>
@@ -540,6 +544,33 @@ function SetupEntryMethodAnalyticsPanel(props: { readonly rows: readonly SetupEn
           <div className="setup-entry-method-row" key={`${row.setupName}-${row.entryMethodName}`}>
             <span><strong>{row.setupName}</strong></span>
             <span>{row.entryMethodName}</span>
+            <span>{row.closedTrades}</span>
+            <span>{row.winRate}%</span>
+            <span className={getToneClass(row.rExpectancy)}>{formatR(row.rExpectancy)}</span>
+            <span className="good-text">{formatR(row.averageWinningR)}</span>
+            <span className="bad-text">{formatR(row.averageLosingR)}</span>
+            <span className={getToneClass(row.medianR)}>{formatR(row.medianR)}</span>
+            <span className={getToneClass(row.pnl)}>{money(row.pnl)}</span>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function RuleAdherenceAnalyticsPanel(props: { readonly rows: readonly RuleAdherenceAnalyticsRow[] }): JSX.Element {
+  if (props.rows.every((row: RuleAdherenceAnalyticsRow) => row.closedTrades === 0)) {
+    return <section className="panel"><p className="muted">No closed trades in this period.</p></section>;
+  }
+  return (
+    <section className="panel setup-analytics-panel">
+      <div className="setup-analytics-table">
+        <div className="setup-analytics-head">
+          <span>Category</span><span>Trades</span><span>Win %</span><span>R Expectancy</span><span>Avg Win R</span><span>Avg Loss R</span><span>Median R</span><span>P&L</span>
+        </div>
+        {props.rows.map((row: RuleAdherenceAnalyticsRow) => (
+          <div className="setup-analytics-row" key={row.category}>
+            <span><strong>{row.category}</strong></span>
             <span>{row.closedTrades}</span>
             <span>{row.winRate}%</span>
             <span className={getToneClass(row.rExpectancy)}>{formatR(row.rExpectancy)}</span>

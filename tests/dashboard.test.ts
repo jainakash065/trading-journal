@@ -2,7 +2,7 @@ import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
 import { buildDashboard, getDashboardPeriod, parseLastNTradeCount, type Dashboard, type DashboardPeriod, type DashboardPeriodKey } from "../server/src/dashboard";
 import { initializeDatabase } from "../server/src/db";
-import { addExit, createTrade, getTrade, listClosedTradesPage, updateActiveStopLoss, updateCurrentPrice } from "../server/src/repository";
+import { addExit, createTrade, getTrade, listClosedTradesPage, updateActiveStopLoss, updateCurrentPrice, updateReview } from "../server/src/repository";
 
 const dashboardToday: Date = new Date("2026-05-02T00:00:00Z");
 
@@ -474,6 +474,25 @@ describe("dashboard period metrics", () => {
     ]);
   });
 
+  it("calculates rule adherence analytics from reviewed and unreviewed closed trades", () => {
+    const db: Database.Database = createDashboardDatabase();
+    const followedTradeId: number = createClosedTradeWithFinalR(db, { symbol: "FOLLOWED", finalR: 2, entryDate: "2026-04-01", exitDate: "2026-04-03" });
+    const brokenTradeId: number = createClosedTradeWithFinalR(db, { symbol: "BROKEN", finalR: -1, entryDate: "2026-04-04", exitDate: "2026-04-06" });
+    createClosedTradeWithFinalR(db, { symbol: "UNREVIEWED", finalR: 0.5, entryDate: "2026-04-07", exitDate: "2026-04-08" });
+    createClosedTradeWithFinalR(db, { symbol: "OUTSIDE", finalR: 5, entryDate: "2026-05-01", exitDate: "2026-05-02" });
+    createOpenTrade(db, { symbol: "OPEN", entryPrice: 100, quantity: 10, stopLoss: 90 });
+    updateReview(db, followedTradeId, createReviewInput({ followedPlan: 1 }));
+    updateReview(db, brokenTradeId, createReviewInput({ followedPlan: 0 }));
+
+    const dashboard: Dashboard = buildDashboard(db, "last_month", dashboardToday);
+
+    expect(dashboard.ruleAdherenceAnalytics).toEqual([
+      { category: "Rules Followed", closedTrades: 1, winRate: 100, rExpectancy: 2, averageWinningR: 2, averageLosingR: 0, medianR: 2, pnl: 200 },
+      { category: "Rules Broken", closedTrades: 1, winRate: 0, rExpectancy: -1, averageWinningR: 0, averageLosingR: 1, medianR: -1, pnl: -100 },
+      { category: "Not Reviewed", closedTrades: 1, winRate: 100, rExpectancy: 0.5, averageWinningR: 0.5, averageLosingR: 0, medianR: 0.5, pnl: 50 }
+    ]);
+  });
+
   it("pages closed trade history and reports hasMore", () => {
     const db: Database.Database = createDashboardDatabase();
     Array.from({ length: 55 }, (_value, index: number) => {
@@ -723,6 +742,30 @@ function createExitInput(params: {
     reason: "",
     emotionalState: "",
     notes: ""
+  };
+}
+
+function createReviewInput(params: { readonly followedPlan: number }): {
+  readonly followedPlan: number;
+  readonly ruleScore: number;
+  readonly disciplineScore: number;
+  readonly wentWell: string;
+  readonly wentWrong: string;
+  readonly lesson: string;
+  readonly repeatNextTime: string;
+  readonly avoidNextTime: string;
+  readonly mistakeIds: readonly number[];
+} {
+  return {
+    followedPlan: params.followedPlan,
+    ruleScore: 8,
+    disciplineScore: 8,
+    wentWell: "",
+    wentWrong: "",
+    lesson: "",
+    repeatNextTime: "",
+    avoidNextTime: "",
+    mistakeIds: []
   };
 }
 

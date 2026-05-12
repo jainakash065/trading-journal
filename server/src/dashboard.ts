@@ -4,6 +4,7 @@ import { countMarketHolidaysForYear, getCurrentCapital, getSettings, listMarketH
 
 type ClosedTradeMetric = {
   readonly id: number;
+  readonly lastExitId: number;
   readonly symbol: string;
   readonly setupName: string | null;
   readonly entryMethodName: string | null;
@@ -54,12 +55,22 @@ type RDistributionBucket = {
 
 type StreakMood = "normal" | "caution" | "defensive" | "review";
 
+type StreakTrade = {
+  readonly id: number;
+  readonly symbol: string;
+  readonly closedDate: string;
+  readonly finalR: number;
+  readonly realizedPnl: number;
+};
+
 type StreakAnalytics = {
   readonly currentLosingStreak: number;
   readonly maxLosingStreak: number;
   readonly worstStreakR: number;
   readonly worstStreakPnl: number;
   readonly streakMood: StreakMood;
+  readonly currentLosingStreakTrades: readonly StreakTrade[];
+  readonly maxLosingStreakTrades: readonly StreakTrade[];
 };
 
 type RAnalytics = {
@@ -305,6 +316,7 @@ function listClosedTradeMetrics(db: Database.Database, marketHolidays: readonly 
       END AS finalR,
       t.entry_date AS entryDate,
       MAX(e.exit_date) AS closedDate,
+      MAX(e.id) AS lastExitId,
       r.followed_plan AS followedPlan, r.rule_score AS ruleScore
     FROM trades t
     JOIN trade_exits e ON e.trade_id = t.id
@@ -313,7 +325,7 @@ function listClosedTradeMetrics(db: Database.Database, marketHolidays: readonly 
     LEFT JOIN trade_reviews r ON r.trade_id = t.id
     WHERE t.status = 'closed'
     GROUP BY t.id
-    ORDER BY closedDate ASC, t.id ASC
+    ORDER BY closedDate ASC, lastExitId ASC
   `).all() as Omit<ClosedTradeMetric, "durationDays">[];
   return rows.map((row: Omit<ClosedTradeMetric, "durationDays">) => ({
     ...row,
@@ -371,7 +383,7 @@ function calculateRAnalytics(trades: readonly ClosedTradeMetric[]): RAnalytics {
 
 function selectLastNClosedTrades(trades: readonly ClosedTradeMetric[], selectedN: LastNTradeCount): readonly ClosedTradeMetric[] {
   return [...trades]
-    .sort((first: ClosedTradeMetric, second: ClosedTradeMetric) => second.closedDate.localeCompare(first.closedDate) || second.id - first.id)
+    .sort((first: ClosedTradeMetric, second: ClosedTradeMetric) => second.closedDate.localeCompare(first.closedDate) || second.lastExitId - first.lastExitId)
     .slice(0, selectedN);
 }
 
@@ -503,44 +515,50 @@ function createRuleAdherenceAnalyticsRow(category: string, trades: readonly Clos
 }
 
 function calculateStreakAnalytics(trades: readonly ClosedTradeMetric[]): StreakAnalytics {
-  const orderedTrades: readonly ClosedTradeMetric[] = [...trades].sort((first: ClosedTradeMetric, second: ClosedTradeMetric) => first.closedDate.localeCompare(second.closedDate) || first.id - second.id);
-  const currentLosingStreak: number = calculateCurrentLosingStreak(orderedTrades);
+  const orderedTrades: readonly ClosedTradeMetric[] = [...trades].sort((first: ClosedTradeMetric, second: ClosedTradeMetric) => first.closedDate.localeCompare(second.closedDate) || first.lastExitId - second.lastExitId);
+  const currentLosingStreakTrades: readonly ClosedTradeMetric[] = getCurrentLosingStreakTrades(orderedTrades);
   const worstRun = calculateWorstLosingRun(orderedTrades);
+  const currentLosingStreak: number = currentLosingStreakTrades.length;
   return {
     currentLosingStreak,
     maxLosingStreak: worstRun.maxLosingStreak,
     worstStreakR: round(worstRun.worstStreakR),
     worstStreakPnl: round(worstRun.worstStreakPnl),
-    streakMood: getStreakMood(currentLosingStreak)
+    streakMood: getStreakMood(currentLosingStreak),
+    currentLosingStreakTrades: currentLosingStreakTrades.map(toStreakTrade),
+    maxLosingStreakTrades: worstRun.trades.map(toStreakTrade)
   };
 }
 
-function calculateCurrentLosingStreak(trades: readonly ClosedTradeMetric[]): number {
-  let streak = 0;
+function getCurrentLosingStreakTrades(trades: readonly ClosedTradeMetric[]): readonly ClosedTradeMetric[] {
+  const currentRun: ClosedTradeMetric[] = [];
   for (let index: number = trades.length - 1; index >= 0; index -= 1) {
     const trade: ClosedTradeMetric = trades[index];
     if (trade.finalR > 0) {
-      return streak;
+      return currentRun.reverse();
     }
     if (trade.finalR < 0) {
-      streak += 1;
+      currentRun.push(trade);
     }
   }
-  return streak;
+  return currentRun.reverse();
 }
 
-function calculateWorstLosingRun(trades: readonly ClosedTradeMetric[]): { readonly maxLosingStreak: number; readonly worstStreakR: number; readonly worstStreakPnl: number } {
+function calculateWorstLosingRun(trades: readonly ClosedTradeMetric[]): { readonly maxLosingStreak: number; readonly worstStreakR: number; readonly worstStreakPnl: number; readonly trades: readonly ClosedTradeMetric[] } {
   let currentStreak = 0;
   let currentR = 0;
   let currentPnl = 0;
+  let currentTrades: ClosedTradeMetric[] = [];
   let maxLosingStreak = 0;
   let worstStreakR = 0;
   let worstStreakPnl = 0;
+  let worstTrades: ClosedTradeMetric[] = [];
   trades.forEach((trade: ClosedTradeMetric) => {
     if (trade.finalR > 0) {
       currentStreak = 0;
       currentR = 0;
       currentPnl = 0;
+      currentTrades = [];
       return;
     }
     if (trade.finalR === 0) {
@@ -549,13 +567,25 @@ function calculateWorstLosingRun(trades: readonly ClosedTradeMetric[]): { readon
     currentStreak += 1;
     currentR += trade.finalR;
     currentPnl += trade.realizedPnl;
-    if (currentStreak > maxLosingStreak || currentR < worstStreakR) {
+    currentTrades = [...currentTrades, trade];
+    if (currentStreak > maxLosingStreak || (currentStreak === maxLosingStreak && currentR < worstStreakR)) {
       maxLosingStreak = currentStreak;
       worstStreakR = currentR;
       worstStreakPnl = currentPnl;
+      worstTrades = currentTrades;
     }
   });
-  return { maxLosingStreak, worstStreakR, worstStreakPnl };
+  return { maxLosingStreak, worstStreakR, worstStreakPnl, trades: worstTrades };
+}
+
+function toStreakTrade(trade: ClosedTradeMetric): StreakTrade {
+  return {
+    id: trade.id,
+    symbol: trade.symbol,
+    closedDate: trade.closedDate,
+    finalR: trade.finalR,
+    realizedPnl: round(trade.realizedPnl)
+  };
 }
 
 function getStreakMood(currentLosingStreak: number): StreakMood {

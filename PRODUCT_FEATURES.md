@@ -484,8 +484,9 @@ Implemented:
   - `> 5R`
 - Streaks & Drawdowns:
   - Period-aware losing streak cards based on final R.
-  - Last N losing streak cards based on the selected Last 10, Last 20, or Last 50 sample.
   - Shows current losing streak, max losing streak, worst streak R, worst streak P&L, and mode.
+  - Same-day closed trades are ordered by final exit sequence so later exits can reset the current streak.
+  - Current and max losing streak cards reveal the underlying trades on hover, focus, or click.
   - Breakeven trades do not increase or reset losing streaks.
 - Holding Time:
   - Period-aware average winner hold days.
@@ -497,8 +498,10 @@ Implemented:
   - Defaults to Last 20.
   - Open and partially exited trades are excluded.
   - Multiple exits still count as one entry trade.
-  - Ordered by final exit date descending, then trade ID descending for ties.
+  - Ordered by final exit date descending, then final exit sequence descending for ties.
   - Shows P&L, win rate, R expectancy, average winning R, average losing R, expectancy excluding largest winner, average winner hold days, and average loser hold days.
+  - Includes Last N losing streak cards controlled by the Last N sample selector.
+  - Last N losing streak cards also reveal the underlying trades on hover, focus, or click.
   - Includes a separate Last N R Distribution panel.
   - Last N analytics are independent of the selected dashboard period.
   - Last N hold-day metrics are sample-based and separate from the period-based Holding Time section.

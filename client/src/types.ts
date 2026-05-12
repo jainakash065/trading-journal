@@ -115,12 +115,22 @@ export type CapitalCurvePoint = {
 
 export type StreakMood = "normal" | "caution" | "defensive" | "review";
 
+export type StreakTrade = {
+  readonly id: number;
+  readonly symbol: string;
+  readonly closedDate: string;
+  readonly finalR: number;
+  readonly realizedPnl: number;
+};
+
 export type StreakAnalytics = {
   readonly currentLosingStreak: number;
   readonly maxLosingStreak: number;
   readonly worstStreakR: number;
   readonly worstStreakPnl: number;
   readonly streakMood: StreakMood;
+  readonly currentLosingStreakTrades: readonly StreakTrade[];
+  readonly maxLosingStreakTrades: readonly StreakTrade[];
 };
 
 export type LastNTradesAnalytics = {

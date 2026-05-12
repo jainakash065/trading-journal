@@ -2,7 +2,7 @@ import { Activity, BarChart3, BookOpen, ChartNoAxesCombined, ChevronLeft, Chevro
 import { FormEvent, type PointerEvent, useEffect, useState } from "react";
 import { apiDelete, apiGet, apiSend, endpoints, type AppData, type ClosedTradeFilters, type ClosedTradeOutcomeFilter, type MarketHoliday, type ReferenceData, uploadScreenshots } from "./api";
 import { calculateCompletedRLevel, generateRTargetRows, type RTargetRow } from "./r-targets";
-import type { CapitalCurvePoint, Dashboard, DashboardPeriodKey, EntryMethodAnalyticsRow, LastNTradeCount, PagedTrades, RDistributionBucket, RuleAdherenceAnalyticsRow, Settings, SetupAnalyticsRow, SetupEntryMethodAnalyticsRow, StreakAnalytics, StreakMood, Trade, TradeExit } from "./types";
+import type { CapitalCurvePoint, Dashboard, DashboardPeriodKey, EntryMethodAnalyticsRow, LastNTradeCount, PagedTrades, RDistributionBucket, RuleAdherenceAnalyticsRow, Settings, SetupAnalyticsRow, SetupEntryMethodAnalyticsRow, StreakAnalytics, StreakMood, StreakTrade, Trade, TradeExit } from "./types";
 
 type View = "dashboard" | "analytics" | "new" | "open" | "closed" | "settings";
 type DrawerTab = "overview" | "plan" | "manage" | "exits" | "screenshots" | "review";
@@ -388,32 +388,20 @@ function HoldingTimePanel(props: { readonly dashboard: Dashboard }): JSX.Element
 
 function StreaksAndDrawdownsPanel(props: { readonly dashboard: Dashboard }): JSX.Element {
   const periodStreak: StreakAnalytics = props.dashboard.streakAnalytics;
-  const lastNStreak: StreakAnalytics = props.dashboard.lastNTrades.streakAnalytics;
   return (
     <section className="dashboard-section">
       <h3>Streaks & Drawdowns</h3>
-      <div className="split">
-        <section className="panel">
-          <h2>Selected Period</h2>
-          <div className="two-col">
-            <Metric label="Current Losing Streak" value={String(periodStreak.currentLosingStreak)} tone={getStreakTone(periodStreak.streakMood)} />
-            <Metric label="Max Losing Streak" value={String(periodStreak.maxLosingStreak)} tone={getNumberTone(-periodStreak.maxLosingStreak)} />
-            <Metric label="Worst Streak R" value={formatR(periodStreak.worstStreakR)} tone="bad" />
-            <Metric label="Worst Streak P&L" value={money(periodStreak.worstStreakPnl)} tone="bad" />
-            <Metric label="Mode" value={formatStreakMood(periodStreak.streakMood)} tone={getStreakTone(periodStreak.streakMood)} />
-          </div>
-          <p className="muted">{getStreakInterpretation(periodStreak.streakMood)}</p>
-        </section>
-        <section className="panel">
-          <h2>Last N Sample</h2>
-          <div className="two-col">
-            <Metric label="Current Losing Streak" value={String(lastNStreak.currentLosingStreak)} tone={getStreakTone(lastNStreak.streakMood)} />
-            <Metric label="Max Losing Streak" value={String(lastNStreak.maxLosingStreak)} tone={getNumberTone(-lastNStreak.maxLosingStreak)} />
-            <Metric label="Worst Streak R" value={formatR(lastNStreak.worstStreakR)} tone="bad" />
-            <Metric label="Worst Streak P&L" value={money(lastNStreak.worstStreakPnl)} tone="bad" />
-          </div>
-        </section>
-      </div>
+      <section className="panel">
+        <h2>Selected Period</h2>
+        <div className="metric-grid">
+          <StreakMetric label="Current Losing Streak" trades={periodStreak.currentLosingStreakTrades} value={periodStreak.currentLosingStreak} tone={getStreakTone(periodStreak.streakMood)} />
+          <StreakMetric label="Max Losing Streak" trades={periodStreak.maxLosingStreakTrades} value={periodStreak.maxLosingStreak} tone={getNumberTone(-periodStreak.maxLosingStreak)} />
+          <Metric label="Worst Streak R" value={formatR(periodStreak.worstStreakR)} tone="bad" />
+          <Metric label="Worst Streak P&L" value={money(periodStreak.worstStreakPnl)} tone="bad" />
+          <Metric label="Mode" value={formatStreakMood(periodStreak.streakMood)} tone={getStreakTone(periodStreak.streakMood)} />
+        </div>
+        <p className="muted">{getStreakInterpretation(periodStreak.streakMood)}</p>
+      </section>
     </section>
   );
 }
@@ -470,6 +458,7 @@ function LastNClosedTradesSection(props: {
   readonly onLastNTradeCountChange: (count: LastNTradeCount) => Promise<void>;
 }): JSX.Element {
   const d = props.dashboard;
+  const lastNStreak: StreakAnalytics = d.lastNTrades.streakAnalytics;
   return (
     <section className="dashboard-section">
       <div className="dashboard-section-header">
@@ -494,6 +483,10 @@ function LastNClosedTradesSection(props: {
           <Metric label="Expectancy Ex-Largest" value={formatR(d.lastNTrades.expectancyWithoutLargestWinner)} tone={getNumberTone(d.lastNTrades.expectancyWithoutLargestWinner)} />
           <Metric label="Avg Winner Hold" value={formatHoldDays(d.lastNTrades.averageWinningHoldDays)} tone="good" />
           <Metric label="Avg Loser Hold" value={formatHoldDays(d.lastNTrades.averageLosingHoldDays)} tone="bad" />
+          <StreakMetric label="Current Losing Streak" trades={lastNStreak.currentLosingStreakTrades} value={lastNStreak.currentLosingStreak} tone={getStreakTone(lastNStreak.streakMood)} />
+          <StreakMetric label="Max Losing Streak" trades={lastNStreak.maxLosingStreakTrades} value={lastNStreak.maxLosingStreak} tone={getNumberTone(-lastNStreak.maxLosingStreak)} />
+          <Metric label="Worst Streak R" value={formatR(lastNStreak.worstStreakR)} tone="bad" />
+          <Metric label="Worst Streak P&L" value={money(lastNStreak.worstStreakPnl)} tone="bad" />
         </div>
         <div className="analytics-side">
           <RDistributionPanel buckets={d.lastNTrades.rDistribution} subtitle={`${d.lastNTrades.actualCount} closed trades in this sample`} title="Last N R Distribution" />
@@ -1618,6 +1611,35 @@ function Header(props: { readonly eyebrow: string; readonly title: string }): JS
 
 function Metric(props: { readonly label: string; readonly value: string; readonly icon?: JSX.Element; readonly tone?: "good" | "bad" }): JSX.Element {
   return <div className={`metric ${props.tone ?? ""}`}>{props.icon}<span>{props.label}</span><strong>{props.value}</strong></div>;
+}
+
+function StreakMetric(props: {
+  readonly label: string;
+  readonly value: number;
+  readonly trades: readonly StreakTrade[];
+  readonly tone?: "good" | "bad";
+}): JSX.Element {
+  if (props.value === 0 || props.trades.length === 0) {
+    return <Metric label={props.label} value={String(props.value)} tone={props.tone} />;
+  }
+  return (
+    <div className="streak-metric" tabIndex={0}>
+      <Metric label={props.label} value={String(props.value)} tone={props.tone} />
+      <div className="streak-popover" role="tooltip">
+        <strong>{props.label} trades</strong>
+        <div className="streak-popover-list">
+          {props.trades.map((trade: StreakTrade) => (
+            <div className="streak-popover-row" key={trade.id}>
+              <span>{trade.symbol}</span>
+              <span>{formatDisplayDate(trade.closedDate)}</span>
+              <span className="bad-text">{formatR(trade.finalR)}</span>
+              <span className="bad-text">{money(trade.realizedPnl)}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function Input(props: { readonly label: string; readonly value: string; readonly onChange: (value: string) => void; readonly type?: string; readonly required?: boolean; readonly step?: string }): JSX.Element {

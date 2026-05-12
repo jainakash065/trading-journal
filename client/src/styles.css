@@ -328,6 +328,65 @@ nav {
   color: #bb3e2d;
 }
 
+.streak-metric {
+  position: relative;
+}
+
+.streak-metric:focus {
+  outline: none;
+}
+
+.streak-metric:focus .metric {
+  border-color: #d7a84f;
+  box-shadow: 0 0 0 3px rgba(215, 168, 79, .22);
+}
+
+.streak-popover {
+  background: #122620;
+  border-radius: 8px;
+  box-shadow: 0 18px 36px rgba(18, 38, 32, .24);
+  color: #f7f3e8;
+  display: none;
+  left: 0;
+  min-width: 360px;
+  padding: 12px;
+  position: absolute;
+  top: calc(100% + 8px);
+  z-index: 30;
+}
+
+.streak-metric:hover .streak-popover,
+.streak-metric:focus .streak-popover,
+.streak-metric:focus-within .streak-popover {
+  display: grid;
+  gap: 10px;
+}
+
+.streak-popover-list {
+  display: grid;
+  gap: 6px;
+}
+
+.streak-popover-row {
+  align-items: center;
+  display: grid;
+  font-size: 12px;
+  gap: 8px;
+  grid-template-columns: minmax(110px, 1fr) 78px 56px 82px;
+}
+
+.streak-popover-row span:first-child {
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.streak-popover .bad-text {
+  color: #ffb1a5;
+  font-weight: 800;
+}
+
 .split {
   display: grid;
   gap: 18px;

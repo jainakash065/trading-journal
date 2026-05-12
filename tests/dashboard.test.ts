@@ -287,8 +287,54 @@ describe("dashboard period metrics", () => {
       maxLosingStreak: 3,
       worstStreakR: -3.5,
       worstStreakPnl: -350,
-      streakMood: "normal"
+      streakMood: "normal",
+      currentLosingStreakTrades: [
+        { id: 6, symbol: "LOSS4", closedDate: "2026-04-06", finalR: -1, realizedPnl: -100 },
+        { id: 7, symbol: "LOSS5", closedDate: "2026-04-07", finalR: -1.2, realizedPnl: -120 }
+      ],
+      maxLosingStreakTrades: [
+        { id: 1, symbol: "LOSS1", closedDate: "2026-04-01", finalR: -1, realizedPnl: -100 },
+        { id: 2, symbol: "LOSS2", closedDate: "2026-04-02", finalR: -0.5, realizedPnl: -50 },
+        { id: 4, symbol: "LOSS3", closedDate: "2026-04-04", finalR: -2, realizedPnl: -200 }
+      ]
     });
+  });
+
+  it("uses final exit sequence for same-day current losing streaks", () => {
+    const db: Database.Database = createDashboardDatabase();
+    const atherTradeId: number = createOpenTradeForFinalR(db, { symbol: "ATHER", entryDate: "2026-05-01" });
+    const apolloTradeId: number = createOpenTradeForFinalR(db, { symbol: "APOLLO", entryDate: "2026-05-01" });
+    const netwebTradeId: number = createOpenTradeForFinalR(db, { symbol: "NETWEB", entryDate: "2026-05-01" });
+    const ifciTradeId: number = createOpenTradeForFinalR(db, { symbol: "IFCI", entryDate: "2026-05-01" });
+    const olectraTradeId: number = createOpenTradeForFinalR(db, { symbol: "OLECTRA", entryDate: "2026-05-01" });
+    addExitForFinalR(db, { tradeId: olectraTradeId, finalR: -1, exitDate: "2026-05-12" });
+    addExitForFinalR(db, { tradeId: ifciTradeId, finalR: -1, exitDate: "2026-05-12" });
+    addExitForFinalR(db, { tradeId: apolloTradeId, finalR: 0, exitDate: "2026-05-12" });
+    addExitForFinalR(db, { tradeId: netwebTradeId, finalR: 0, exitDate: "2026-05-12" });
+    addExitForFinalR(db, { tradeId: atherTradeId, finalR: 6, exitDate: "2026-05-12" });
+
+    const dashboard: Dashboard = buildDashboard(db, "this_month", new Date("2026-05-13T00:00:00Z"));
+
+    expect(dashboard.streakAnalytics.currentLosingStreak).toBe(0);
+    expect(dashboard.streakAnalytics.maxLosingStreak).toBe(2);
+    expect(dashboard.lastNTrades.streakAnalytics.currentLosingStreak).toBe(0);
+    expect(dashboard.streakAnalytics.currentLosingStreakTrades).toEqual([]);
+    expect(dashboard.streakAnalytics.maxLosingStreakTrades.map((trade) => trade.symbol)).toEqual(["OLECTRA", "IFCI"]);
+  });
+
+  it("uses final exit sequence when selecting same-day last N closed trades", () => {
+    const db: Database.Database = createDashboardDatabase();
+    const latestTradeId: number = createOpenTradeForFinalR(db, { symbol: "LATEST", entryDate: "2026-05-01" });
+    for (let index: number = 1; index <= 10; index += 1) {
+      const tradeId: number = createOpenTradeForFinalR(db, { symbol: `OLDER${index}`, entryDate: "2026-05-01" });
+      addExitForFinalR(db, { tradeId, finalR: 1, exitDate: "2026-05-12" });
+    }
+    addExitForFinalR(db, { tradeId: latestTradeId, finalR: -1, exitDate: "2026-05-12" });
+
+    const dashboard: Dashboard = buildDashboard(db, "this_month", new Date("2026-05-13T00:00:00Z"), 10);
+
+    expect(dashboard.lastNTrades.actualCount).toBe(10);
+    expect(dashboard.lastNTrades.streakAnalytics.currentLosingStreak).toBe(1);
   });
 
   it("sets streak mood from the current losing streak", () => {
@@ -389,8 +435,8 @@ describe("dashboard period metrics", () => {
     expect(dashboard.lastNTrades.actualCount).toBe(1);
     expect(dashboard.lastNTrades.pnl).toBe(16556.4);
     expect(dashboard.lastNTrades.averageR).toBe(11.23);
-    expect(dashboard.streakAnalytics).toEqual({ currentLosingStreak: 0, maxLosingStreak: 0, worstStreakR: 0, worstStreakPnl: 0, streakMood: "normal" });
-    expect(dashboard.lastNTrades.streakAnalytics).toEqual({ currentLosingStreak: 0, maxLosingStreak: 0, worstStreakR: 0, worstStreakPnl: 0, streakMood: "normal" });
+    expect(dashboard.streakAnalytics).toEqual({ currentLosingStreak: 0, maxLosingStreak: 0, worstStreakR: 0, worstStreakPnl: 0, streakMood: "normal", currentLosingStreakTrades: [], maxLosingStreakTrades: [] });
+    expect(dashboard.lastNTrades.streakAnalytics).toEqual({ currentLosingStreak: 0, maxLosingStreak: 0, worstStreakR: 0, worstStreakPnl: 0, streakMood: "normal", currentLosingStreakTrades: [], maxLosingStreakTrades: [] });
   });
 
   it("calculates setup analytics from period closed trades", () => {
@@ -719,6 +765,45 @@ function createClosedTradeWithFinalR(
   addExit(db, createExitInput({ tradeId, exitDate: params.exitDate, exitPrice, quantity }));
   db.prepare("UPDATE settings SET value = '2026-04-01' WHERE key = 'capitalHistoryStartDate'").run();
   return tradeId;
+}
+
+function createOpenTradeForFinalR(
+  db: Database.Database,
+  params: {
+    readonly symbol: string;
+    readonly entryDate: string;
+  }
+): number {
+  return createTrade(db, {
+    symbol: params.symbol,
+    market: "India",
+    direction: "Buy",
+    entryDate: params.entryDate,
+    entryPrice: 100,
+    quantity: 10,
+    stopLoss: 90,
+    riskPercentage: 0.5,
+    riskCapitalBase: 550000,
+    setupId: 1,
+    entryReason: "Same-day streak test",
+    emotionalState: "",
+    confidence: 3,
+    notes: "",
+    checklistResponses: []
+  });
+}
+
+function addExitForFinalR(
+  db: Database.Database,
+  params: {
+    readonly tradeId: number;
+    readonly finalR: number;
+    readonly exitDate: string;
+  }
+): void {
+  const exitPrice: number = 100 + (params.finalR * ((100 - 90) * 10)) / 10;
+  addExit(db, createExitInput({ tradeId: params.tradeId, exitDate: params.exitDate, exitPrice, quantity: 10 }));
+  db.prepare("UPDATE settings SET value = '2026-04-01' WHERE key = 'capitalHistoryStartDate'").run();
 }
 
 function createClosedTradeFilters(overrides: Partial<Parameters<typeof listClosedTradesPage>[1]> = {}): Parameters<typeof listClosedTradesPage>[1] {

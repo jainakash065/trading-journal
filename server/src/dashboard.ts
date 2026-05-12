@@ -4,6 +4,7 @@ import { countMarketHolidaysForYear, getCurrentCapital, getSettings, listMarketH
 
 type ClosedTradeMetric = {
   readonly id: number;
+  readonly lastExitId: number;
   readonly symbol: string;
   readonly setupName: string | null;
   readonly entryMethodName: string | null;
@@ -52,6 +53,26 @@ type RDistributionBucket = {
   readonly count: number;
 };
 
+type StreakMood = "normal" | "caution" | "defensive" | "review";
+
+type StreakTrade = {
+  readonly id: number;
+  readonly symbol: string;
+  readonly closedDate: string;
+  readonly finalR: number;
+  readonly realizedPnl: number;
+};
+
+type StreakAnalytics = {
+  readonly currentLosingStreak: number;
+  readonly maxLosingStreak: number;
+  readonly worstStreakR: number;
+  readonly worstStreakPnl: number;
+  readonly streakMood: StreakMood;
+  readonly currentLosingStreakTrades: readonly StreakTrade[];
+  readonly maxLosingStreakTrades: readonly StreakTrade[];
+};
+
 type RAnalytics = {
   readonly winPercentage: number;
   readonly lossPercentage: number;
@@ -80,6 +101,7 @@ type LastNTradesAnalytics = {
   readonly averageWinningHoldDays: number;
   readonly averageLosingHoldDays: number;
   readonly rDistribution: readonly RDistributionBucket[];
+  readonly streakAnalytics: StreakAnalytics;
 };
 
 type SetupAnalyticsRow = {
@@ -107,6 +129,17 @@ type EntryMethodAnalyticsRow = {
 type SetupEntryMethodAnalyticsRow = {
   readonly setupName: string;
   readonly entryMethodName: string;
+  readonly closedTrades: number;
+  readonly winRate: number;
+  readonly rExpectancy: number;
+  readonly averageWinningR: number;
+  readonly averageLosingR: number;
+  readonly medianR: number;
+  readonly pnl: number;
+};
+
+type RuleAdherenceAnalyticsRow = {
+  readonly category: string;
   readonly closedTrades: number;
   readonly winRate: number;
   readonly rExpectancy: number;
@@ -148,6 +181,7 @@ export type Dashboard = {
   readonly largestWinnerR: number;
   readonly expectancyWithoutLargestWinner: number;
   readonly rDistribution: readonly RDistributionBucket[];
+  readonly streakAnalytics: StreakAnalytics;
   readonly expectancy: number;
   readonly maxDrawdown: number;
   readonly openTrades: number;
@@ -165,6 +199,7 @@ export type Dashboard = {
   readonly setupAnalytics: readonly SetupAnalyticsRow[];
   readonly entryMethodAnalytics: readonly EntryMethodAnalyticsRow[];
   readonly setupEntryMethodAnalytics: readonly SetupEntryMethodAnalyticsRow[];
+  readonly ruleAdherenceAnalytics: readonly RuleAdherenceAnalyticsRow[];
   readonly missingHolidayYear: number | null;
 };
 
@@ -226,6 +261,7 @@ export function buildDashboard(db: Database.Database, periodKey: DashboardPeriod
     largestWinnerR: rAnalytics.largestWinnerR,
     expectancyWithoutLargestWinner: rAnalytics.expectancyWithoutLargestWinner,
     rDistribution: rAnalytics.rDistribution,
+    streakAnalytics: calculateStreakAnalytics(periodTrades),
     expectancy: average(periodTrades.map((trade: ClosedTradeMetric) => trade.realizedPnl)),
     maxDrawdown: calculateBookedMaxDrawdown({ startingCapital: periodCapital.startingCapital ?? 0, exits: periodExits }),
     openTrades: getCount(db, "SELECT COUNT(*) AS count FROM trades WHERE status != 'closed'"),
@@ -249,6 +285,7 @@ export function buildDashboard(db: Database.Database, periodKey: DashboardPeriod
     setupAnalytics: calculateSetupAnalytics(periodTrades),
     entryMethodAnalytics: calculateEntryMethodAnalytics(periodTrades),
     setupEntryMethodAnalytics: calculateSetupEntryMethodAnalytics(periodTrades),
+    ruleAdherenceAnalytics: calculateRuleAdherenceAnalytics(periodTrades),
     missingHolidayYear: countMarketHolidaysForYear(db, today.getUTCFullYear()) === 0 ? today.getUTCFullYear() : null
   };
 }
@@ -279,6 +316,7 @@ function listClosedTradeMetrics(db: Database.Database, marketHolidays: readonly 
       END AS finalR,
       t.entry_date AS entryDate,
       MAX(e.exit_date) AS closedDate,
+      MAX(e.id) AS lastExitId,
       r.followed_plan AS followedPlan, r.rule_score AS ruleScore
     FROM trades t
     JOIN trade_exits e ON e.trade_id = t.id
@@ -287,7 +325,7 @@ function listClosedTradeMetrics(db: Database.Database, marketHolidays: readonly 
     LEFT JOIN trade_reviews r ON r.trade_id = t.id
     WHERE t.status = 'closed'
     GROUP BY t.id
-    ORDER BY closedDate ASC, t.id ASC
+    ORDER BY closedDate ASC, lastExitId ASC
   `).all() as Omit<ClosedTradeMetric, "durationDays">[];
   return rows.map((row: Omit<ClosedTradeMetric, "durationDays">) => ({
     ...row,
@@ -345,7 +383,7 @@ function calculateRAnalytics(trades: readonly ClosedTradeMetric[]): RAnalytics {
 
 function selectLastNClosedTrades(trades: readonly ClosedTradeMetric[], selectedN: LastNTradeCount): readonly ClosedTradeMetric[] {
   return [...trades]
-    .sort((first: ClosedTradeMetric, second: ClosedTradeMetric) => second.closedDate.localeCompare(first.closedDate) || second.id - first.id)
+    .sort((first: ClosedTradeMetric, second: ClosedTradeMetric) => second.closedDate.localeCompare(first.closedDate) || second.lastExitId - first.lastExitId)
     .slice(0, selectedN);
 }
 
@@ -368,7 +406,8 @@ function calculateLastNTradesAnalytics(trades: readonly ClosedTradeMetric[], sel
     expectancyWithoutLargestWinner: rAnalytics.expectancyWithoutLargestWinner,
     averageWinningHoldDays: rAnalytics.averageWinningHoldDays,
     averageLosingHoldDays: rAnalytics.averageLosingHoldDays,
-    rDistribution: rAnalytics.rDistribution
+    rDistribution: rAnalytics.rDistribution,
+    streakAnalytics: calculateStreakAnalytics(trades)
   };
 }
 
@@ -450,6 +489,116 @@ function createSetupEntryMethodAnalyticsRow(params: { readonly setupName: string
     medianR: analytics.medianR,
     pnl: round(params.trades.reduce((total: number, trade: ClosedTradeMetric) => total + trade.realizedPnl, 0))
   };
+}
+
+function calculateRuleAdherenceAnalytics(trades: readonly ClosedTradeMetric[]): readonly RuleAdherenceAnalyticsRow[] {
+  const categories: readonly { readonly category: string; readonly trades: readonly ClosedTradeMetric[] }[] = [
+    { category: "Rules Followed", trades: trades.filter((trade: ClosedTradeMetric) => trade.followedPlan === 1) },
+    { category: "Rules Broken", trades: trades.filter((trade: ClosedTradeMetric) => trade.followedPlan === 0) },
+    { category: "Not Reviewed", trades: trades.filter((trade: ClosedTradeMetric) => trade.followedPlan === null) }
+  ];
+  return categories.map((entry) => createRuleAdherenceAnalyticsRow(entry.category, entry.trades));
+}
+
+function createRuleAdherenceAnalyticsRow(category: string, trades: readonly ClosedTradeMetric[]): RuleAdherenceAnalyticsRow {
+  const analytics: RAnalytics = calculateRAnalytics(trades);
+  return {
+    category,
+    closedTrades: trades.length,
+    winRate: analytics.winPercentage,
+    rExpectancy: analytics.rExpectancy,
+    averageWinningR: analytics.averageWinningR,
+    averageLosingR: analytics.averageLosingR,
+    medianR: analytics.medianR,
+    pnl: round(trades.reduce((total: number, trade: ClosedTradeMetric) => total + trade.realizedPnl, 0))
+  };
+}
+
+function calculateStreakAnalytics(trades: readonly ClosedTradeMetric[]): StreakAnalytics {
+  const orderedTrades: readonly ClosedTradeMetric[] = [...trades].sort((first: ClosedTradeMetric, second: ClosedTradeMetric) => first.closedDate.localeCompare(second.closedDate) || first.lastExitId - second.lastExitId);
+  const currentLosingStreakTrades: readonly ClosedTradeMetric[] = getCurrentLosingStreakTrades(orderedTrades);
+  const worstRun = calculateWorstLosingRun(orderedTrades);
+  const currentLosingStreak: number = currentLosingStreakTrades.length;
+  return {
+    currentLosingStreak,
+    maxLosingStreak: worstRun.maxLosingStreak,
+    worstStreakR: round(worstRun.worstStreakR),
+    worstStreakPnl: round(worstRun.worstStreakPnl),
+    streakMood: getStreakMood(currentLosingStreak),
+    currentLosingStreakTrades: currentLosingStreakTrades.map(toStreakTrade),
+    maxLosingStreakTrades: worstRun.trades.map(toStreakTrade)
+  };
+}
+
+function getCurrentLosingStreakTrades(trades: readonly ClosedTradeMetric[]): readonly ClosedTradeMetric[] {
+  const currentRun: ClosedTradeMetric[] = [];
+  for (let index: number = trades.length - 1; index >= 0; index -= 1) {
+    const trade: ClosedTradeMetric = trades[index];
+    if (trade.finalR > 0) {
+      return currentRun.reverse();
+    }
+    if (trade.finalR < 0) {
+      currentRun.push(trade);
+    }
+  }
+  return currentRun.reverse();
+}
+
+function calculateWorstLosingRun(trades: readonly ClosedTradeMetric[]): { readonly maxLosingStreak: number; readonly worstStreakR: number; readonly worstStreakPnl: number; readonly trades: readonly ClosedTradeMetric[] } {
+  let currentStreak = 0;
+  let currentR = 0;
+  let currentPnl = 0;
+  let currentTrades: ClosedTradeMetric[] = [];
+  let maxLosingStreak = 0;
+  let worstStreakR = 0;
+  let worstStreakPnl = 0;
+  let worstTrades: ClosedTradeMetric[] = [];
+  trades.forEach((trade: ClosedTradeMetric) => {
+    if (trade.finalR > 0) {
+      currentStreak = 0;
+      currentR = 0;
+      currentPnl = 0;
+      currentTrades = [];
+      return;
+    }
+    if (trade.finalR === 0) {
+      return;
+    }
+    currentStreak += 1;
+    currentR += trade.finalR;
+    currentPnl += trade.realizedPnl;
+    currentTrades = [...currentTrades, trade];
+    if (currentStreak > maxLosingStreak || (currentStreak === maxLosingStreak && currentR < worstStreakR)) {
+      maxLosingStreak = currentStreak;
+      worstStreakR = currentR;
+      worstStreakPnl = currentPnl;
+      worstTrades = currentTrades;
+    }
+  });
+  return { maxLosingStreak, worstStreakR, worstStreakPnl, trades: worstTrades };
+}
+
+function toStreakTrade(trade: ClosedTradeMetric): StreakTrade {
+  return {
+    id: trade.id,
+    symbol: trade.symbol,
+    closedDate: trade.closedDate,
+    finalR: trade.finalR,
+    realizedPnl: round(trade.realizedPnl)
+  };
+}
+
+function getStreakMood(currentLosingStreak: number): StreakMood {
+  if (currentLosingStreak >= 5) {
+    return "review";
+  }
+  if (currentLosingStreak === 4) {
+    return "defensive";
+  }
+  if (currentLosingStreak === 3) {
+    return "caution";
+  }
+  return "normal";
 }
 
 function calculateRExpectancy(params: {

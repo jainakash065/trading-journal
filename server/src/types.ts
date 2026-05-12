@@ -70,6 +70,10 @@ export type ReviewRow = {
   readonly avoidNextTime: string;
 };
 
+export type ReviewDetailRow = ReviewRow & {
+  readonly mistakeIds: readonly number[];
+};
+
 export type MarketHolidayRow = {
   readonly id: number;
   readonly date: string;

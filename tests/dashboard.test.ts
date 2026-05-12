@@ -2,7 +2,7 @@ import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
 import { buildDashboard, getDashboardPeriod, parseLastNTradeCount, type Dashboard, type DashboardPeriod, type DashboardPeriodKey } from "../server/src/dashboard";
 import { initializeDatabase } from "../server/src/db";
-import { addExit, createTrade, getTrade, listClosedTradesPage, updateActiveStopLoss, updateCurrentPrice } from "../server/src/repository";
+import { addExit, createTrade, getTrade, listClosedTradesPage, updateActiveStopLoss, updateCurrentPrice, updateReview } from "../server/src/repository";
 
 const dashboardToday: Date = new Date("2026-05-02T00:00:00Z");
 
@@ -270,6 +270,85 @@ describe("dashboard period metrics", () => {
     ]);
   });
 
+  it("calculates losing streaks while ignoring breakeven trades", () => {
+    const db: Database.Database = createDashboardDatabase();
+    createClosedTradeWithFinalR(db, { symbol: "LOSS1", finalR: -1, entryDate: "2026-04-01", exitDate: "2026-04-01" });
+    createClosedTradeWithFinalR(db, { symbol: "LOSS2", finalR: -0.5, entryDate: "2026-04-02", exitDate: "2026-04-02" });
+    createClosedTradeWithFinalR(db, { symbol: "EVEN", finalR: 0, entryDate: "2026-04-03", exitDate: "2026-04-03" });
+    createClosedTradeWithFinalR(db, { symbol: "LOSS3", finalR: -2, entryDate: "2026-04-04", exitDate: "2026-04-04" });
+    createClosedTradeWithFinalR(db, { symbol: "WIN", finalR: 1, entryDate: "2026-04-05", exitDate: "2026-04-05" });
+    createClosedTradeWithFinalR(db, { symbol: "LOSS4", finalR: -1, entryDate: "2026-04-06", exitDate: "2026-04-06" });
+    createClosedTradeWithFinalR(db, { symbol: "LOSS5", finalR: -1.2, entryDate: "2026-04-07", exitDate: "2026-04-07" });
+
+    const dashboard: Dashboard = buildDashboard(db, "last_month", dashboardToday);
+
+    expect(dashboard.streakAnalytics).toEqual({
+      currentLosingStreak: 2,
+      maxLosingStreak: 3,
+      worstStreakR: -3.5,
+      worstStreakPnl: -350,
+      streakMood: "normal",
+      currentLosingStreakTrades: [
+        { id: 6, symbol: "LOSS4", closedDate: "2026-04-06", finalR: -1, realizedPnl: -100 },
+        { id: 7, symbol: "LOSS5", closedDate: "2026-04-07", finalR: -1.2, realizedPnl: -120 }
+      ],
+      maxLosingStreakTrades: [
+        { id: 1, symbol: "LOSS1", closedDate: "2026-04-01", finalR: -1, realizedPnl: -100 },
+        { id: 2, symbol: "LOSS2", closedDate: "2026-04-02", finalR: -0.5, realizedPnl: -50 },
+        { id: 4, symbol: "LOSS3", closedDate: "2026-04-04", finalR: -2, realizedPnl: -200 }
+      ]
+    });
+  });
+
+  it("uses final exit sequence for same-day current losing streaks", () => {
+    const db: Database.Database = createDashboardDatabase();
+    const atherTradeId: number = createOpenTradeForFinalR(db, { symbol: "ATHER", entryDate: "2026-05-01" });
+    const apolloTradeId: number = createOpenTradeForFinalR(db, { symbol: "APOLLO", entryDate: "2026-05-01" });
+    const netwebTradeId: number = createOpenTradeForFinalR(db, { symbol: "NETWEB", entryDate: "2026-05-01" });
+    const ifciTradeId: number = createOpenTradeForFinalR(db, { symbol: "IFCI", entryDate: "2026-05-01" });
+    const olectraTradeId: number = createOpenTradeForFinalR(db, { symbol: "OLECTRA", entryDate: "2026-05-01" });
+    addExitForFinalR(db, { tradeId: olectraTradeId, finalR: -1, exitDate: "2026-05-12" });
+    addExitForFinalR(db, { tradeId: ifciTradeId, finalR: -1, exitDate: "2026-05-12" });
+    addExitForFinalR(db, { tradeId: apolloTradeId, finalR: 0, exitDate: "2026-05-12" });
+    addExitForFinalR(db, { tradeId: netwebTradeId, finalR: 0, exitDate: "2026-05-12" });
+    addExitForFinalR(db, { tradeId: atherTradeId, finalR: 6, exitDate: "2026-05-12" });
+
+    const dashboard: Dashboard = buildDashboard(db, "this_month", new Date("2026-05-13T00:00:00Z"));
+
+    expect(dashboard.streakAnalytics.currentLosingStreak).toBe(0);
+    expect(dashboard.streakAnalytics.maxLosingStreak).toBe(2);
+    expect(dashboard.lastNTrades.streakAnalytics.currentLosingStreak).toBe(0);
+    expect(dashboard.streakAnalytics.currentLosingStreakTrades).toEqual([]);
+    expect(dashboard.streakAnalytics.maxLosingStreakTrades.map((trade) => trade.symbol)).toEqual(["OLECTRA", "IFCI"]);
+  });
+
+  it("uses final exit sequence when selecting same-day last N closed trades", () => {
+    const db: Database.Database = createDashboardDatabase();
+    const latestTradeId: number = createOpenTradeForFinalR(db, { symbol: "LATEST", entryDate: "2026-05-01" });
+    for (let index: number = 1; index <= 10; index += 1) {
+      const tradeId: number = createOpenTradeForFinalR(db, { symbol: `OLDER${index}`, entryDate: "2026-05-01" });
+      addExitForFinalR(db, { tradeId, finalR: 1, exitDate: "2026-05-12" });
+    }
+    addExitForFinalR(db, { tradeId: latestTradeId, finalR: -1, exitDate: "2026-05-12" });
+
+    const dashboard: Dashboard = buildDashboard(db, "this_month", new Date("2026-05-13T00:00:00Z"), 10);
+
+    expect(dashboard.lastNTrades.actualCount).toBe(10);
+    expect(dashboard.lastNTrades.streakAnalytics.currentLosingStreak).toBe(1);
+  });
+
+  it("sets streak mood from the current losing streak", () => {
+    const db: Database.Database = createDashboardDatabase();
+    createClosedTradeWithFinalR(db, { symbol: "LOSS1", finalR: -1, entryDate: "2026-04-01", exitDate: "2026-04-01" });
+    createClosedTradeWithFinalR(db, { symbol: "LOSS2", finalR: -1, entryDate: "2026-04-02", exitDate: "2026-04-02" });
+    createClosedTradeWithFinalR(db, { symbol: "LOSS3", finalR: -1, entryDate: "2026-04-03", exitDate: "2026-04-03" });
+
+    const dashboard: Dashboard = buildDashboard(db, "last_month", dashboardToday);
+
+    expect(dashboard.streakAnalytics.currentLosingStreak).toBe(3);
+    expect(dashboard.streakAnalytics.streakMood).toBe("caution");
+  });
+
   it("calculates median R for an odd number of closed trades", () => {
     const db: Database.Database = createDashboardDatabase();
     createClosedTradeWithFinalR(db, { symbol: "ODDLOSS", finalR: -1, entryDate: "2026-04-01", exitDate: "2026-04-03" });
@@ -356,6 +435,8 @@ describe("dashboard period metrics", () => {
     expect(dashboard.lastNTrades.actualCount).toBe(1);
     expect(dashboard.lastNTrades.pnl).toBe(16556.4);
     expect(dashboard.lastNTrades.averageR).toBe(11.23);
+    expect(dashboard.streakAnalytics).toEqual({ currentLosingStreak: 0, maxLosingStreak: 0, worstStreakR: 0, worstStreakPnl: 0, streakMood: "normal", currentLosingStreakTrades: [], maxLosingStreakTrades: [] });
+    expect(dashboard.lastNTrades.streakAnalytics).toEqual({ currentLosingStreak: 0, maxLosingStreak: 0, worstStreakR: 0, worstStreakPnl: 0, streakMood: "normal", currentLosingStreakTrades: [], maxLosingStreakTrades: [] });
   });
 
   it("calculates setup analytics from period closed trades", () => {
@@ -471,6 +552,25 @@ describe("dashboard period metrics", () => {
       { setupName: "Breakout", entryMethodName: "Strong start entry", closedTrades: 1, rExpectancy: 2 },
       { setupName: "Pullback", entryMethodName: "Strong start entry", closedTrades: 1, rExpectancy: 1 },
       { setupName: "Breakout", entryMethodName: "Normal pivot entry", closedTrades: 1, rExpectancy: -1 }
+    ]);
+  });
+
+  it("calculates rule adherence analytics from reviewed and unreviewed closed trades", () => {
+    const db: Database.Database = createDashboardDatabase();
+    const followedTradeId: number = createClosedTradeWithFinalR(db, { symbol: "FOLLOWED", finalR: 2, entryDate: "2026-04-01", exitDate: "2026-04-03" });
+    const brokenTradeId: number = createClosedTradeWithFinalR(db, { symbol: "BROKEN", finalR: -1, entryDate: "2026-04-04", exitDate: "2026-04-06" });
+    createClosedTradeWithFinalR(db, { symbol: "UNREVIEWED", finalR: 0.5, entryDate: "2026-04-07", exitDate: "2026-04-08" });
+    createClosedTradeWithFinalR(db, { symbol: "OUTSIDE", finalR: 5, entryDate: "2026-05-01", exitDate: "2026-05-02" });
+    createOpenTrade(db, { symbol: "OPEN", entryPrice: 100, quantity: 10, stopLoss: 90 });
+    updateReview(db, followedTradeId, createReviewInput({ followedPlan: 1 }));
+    updateReview(db, brokenTradeId, createReviewInput({ followedPlan: 0 }));
+
+    const dashboard: Dashboard = buildDashboard(db, "last_month", dashboardToday);
+
+    expect(dashboard.ruleAdherenceAnalytics).toEqual([
+      { category: "Rules Followed", closedTrades: 1, winRate: 100, rExpectancy: 2, averageWinningR: 2, averageLosingR: 0, medianR: 2, pnl: 200 },
+      { category: "Rules Broken", closedTrades: 1, winRate: 0, rExpectancy: -1, averageWinningR: 0, averageLosingR: 1, medianR: -1, pnl: -100 },
+      { category: "Not Reviewed", closedTrades: 1, winRate: 100, rExpectancy: 0.5, averageWinningR: 0.5, averageLosingR: 0, medianR: 0.5, pnl: 50 }
     ]);
   });
 
@@ -667,6 +767,45 @@ function createClosedTradeWithFinalR(
   return tradeId;
 }
 
+function createOpenTradeForFinalR(
+  db: Database.Database,
+  params: {
+    readonly symbol: string;
+    readonly entryDate: string;
+  }
+): number {
+  return createTrade(db, {
+    symbol: params.symbol,
+    market: "India",
+    direction: "Buy",
+    entryDate: params.entryDate,
+    entryPrice: 100,
+    quantity: 10,
+    stopLoss: 90,
+    riskPercentage: 0.5,
+    riskCapitalBase: 550000,
+    setupId: 1,
+    entryReason: "Same-day streak test",
+    emotionalState: "",
+    confidence: 3,
+    notes: "",
+    checklistResponses: []
+  });
+}
+
+function addExitForFinalR(
+  db: Database.Database,
+  params: {
+    readonly tradeId: number;
+    readonly finalR: number;
+    readonly exitDate: string;
+  }
+): void {
+  const exitPrice: number = 100 + (params.finalR * ((100 - 90) * 10)) / 10;
+  addExit(db, createExitInput({ tradeId: params.tradeId, exitDate: params.exitDate, exitPrice, quantity: 10 }));
+  db.prepare("UPDATE settings SET value = '2026-04-01' WHERE key = 'capitalHistoryStartDate'").run();
+}
+
 function createClosedTradeFilters(overrides: Partial<Parameters<typeof listClosedTradesPage>[1]> = {}): Parameters<typeof listClosedTradesPage>[1] {
   return {
     limit: 50,
@@ -723,6 +862,30 @@ function createExitInput(params: {
     reason: "",
     emotionalState: "",
     notes: ""
+  };
+}
+
+function createReviewInput(params: { readonly followedPlan: number }): {
+  readonly followedPlan: number;
+  readonly ruleScore: number;
+  readonly disciplineScore: number;
+  readonly wentWell: string;
+  readonly wentWrong: string;
+  readonly lesson: string;
+  readonly repeatNextTime: string;
+  readonly avoidNextTime: string;
+  readonly mistakeIds: readonly number[];
+} {
+  return {
+    followedPlan: params.followedPlan,
+    ruleScore: 8,
+    disciplineScore: 8,
+    wentWell: "",
+    wentWrong: "",
+    lesson: "",
+    repeatNextTime: "",
+    avoidNextTime: "",
+    mistakeIds: []
   };
 }
 

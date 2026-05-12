@@ -2,7 +2,7 @@ import { Activity, BarChart3, BookOpen, ChartNoAxesCombined, ChevronLeft, Chevro
 import { FormEvent, type PointerEvent, useEffect, useState } from "react";
 import { apiDelete, apiGet, apiSend, endpoints, type AppData, type ClosedTradeFilters, type ClosedTradeOutcomeFilter, type MarketHoliday, type ReferenceData, uploadScreenshots } from "./api";
 import { calculateCompletedRLevel, generateRTargetRows, type RTargetRow } from "./r-targets";
-import type { CapitalCurvePoint, Dashboard, DashboardPeriodKey, EntryMethodAnalyticsRow, LastNTradeCount, PagedTrades, RDistributionBucket, Settings, SetupAnalyticsRow, SetupEntryMethodAnalyticsRow, Trade, TradeExit } from "./types";
+import type { CapitalCurvePoint, Dashboard, DashboardPeriodKey, EntryMethodAnalyticsRow, LastNTradeCount, PagedTrades, RDistributionBucket, RuleAdherenceAnalyticsRow, Settings, SetupAnalyticsRow, SetupEntryMethodAnalyticsRow, StreakAnalytics, StreakMood, StreakTrade, Trade, TradeExit } from "./types";
 
 type View = "dashboard" | "analytics" | "new" | "open" | "closed" | "settings";
 type DrawerTab = "overview" | "plan" | "manage" | "exits" | "screenshots" | "review";
@@ -88,10 +88,53 @@ type ScreenshotPreview = {
   readonly type: string;
 };
 
+type ReviewDetail = {
+  readonly tradeId: number;
+  readonly followedPlan: number;
+  readonly ruleScore: number;
+  readonly disciplineScore: number;
+  readonly wentWell: string;
+  readonly wentWrong: string;
+  readonly lesson: string;
+  readonly repeatNextTime: string;
+  readonly avoidNextTime: string;
+  readonly mistakeIds: readonly number[];
+};
+
+type ReviewFormState = {
+  readonly followedPlan: string;
+  readonly ruleScore: string;
+  readonly disciplineScore: string;
+  readonly wentWell: string;
+  readonly wentWrong: string;
+  readonly lesson: string;
+  readonly repeatNextTime: string;
+  readonly avoidNextTime: string;
+  readonly mistakeIds: readonly number[];
+};
+
 type ReviewSaveStatus = "idle" | "saving" | "saved" | "error";
 
 function createEmptyExitForm(): ExitFormState {
   return { exitDate: today, exitPrice: "", quantity: "", reason: "", emotionalState: "", notes: "" };
+}
+
+function createDefaultReviewForm(): ReviewFormState {
+  return { followedPlan: "1", ruleScore: "5", disciplineScore: "5", wentWell: "", wentWrong: "", lesson: "", repeatNextTime: "", avoidNextTime: "", mistakeIds: [] };
+}
+
+function createReviewFormFromDetail(review: ReviewDetail): ReviewFormState {
+  return {
+    followedPlan: String(review.followedPlan),
+    ruleScore: String(review.ruleScore),
+    disciplineScore: String(review.disciplineScore),
+    wentWell: review.wentWell,
+    wentWrong: review.wentWrong,
+    lesson: review.lesson,
+    repeatNextTime: review.repeatNextTime,
+    avoidNextTime: review.avoidNextTime,
+    mistakeIds: review.mistakeIds
+  };
 }
 
 export function App(): JSX.Element {
@@ -312,9 +355,14 @@ function AnalyticsView(props: {
         <SetupEntryMethodAnalyticsPanel rows={d.setupEntryMethodAnalytics} />
       </section>
       <section className="dashboard-section">
+        <h3>Rule Adherence Analytics</h3>
+        <RuleAdherenceAnalyticsPanel rows={d.ruleAdherenceAnalytics} />
+      </section>
+      <section className="dashboard-section">
         <h3>R Distribution</h3>
         <RDistributionPanel buckets={d.rDistribution} subtitle={`${getDistributionTotal(d.rDistribution)} closed trades in this period`} title="Period R Distribution" />
       </section>
+      <StreaksAndDrawdownsPanel dashboard={d} />
       <HoldingTimePanel dashboard={d} />
       <LastNClosedTradesSection dashboard={d} lastNTradeCount={props.lastNTradeCount} onLastNTradeCountChange={props.onLastNTradeCountChange} />
       <div className="split">
@@ -334,6 +382,26 @@ function HoldingTimePanel(props: { readonly dashboard: Dashboard }): JSX.Element
         <Metric label="Avg Winner Hold" value={formatHoldDays(d.averageWinningHoldDays)} tone="good" />
         <Metric label="Avg Loser Hold" value={formatHoldDays(d.averageLosingHoldDays)} tone="bad" />
       </div>
+    </section>
+  );
+}
+
+function StreaksAndDrawdownsPanel(props: { readonly dashboard: Dashboard }): JSX.Element {
+  const periodStreak: StreakAnalytics = props.dashboard.streakAnalytics;
+  return (
+    <section className="dashboard-section">
+      <h3>Streaks & Drawdowns</h3>
+      <section className="panel">
+        <h2>Selected Period</h2>
+        <div className="metric-grid">
+          <StreakMetric label="Current Losing Streak" trades={periodStreak.currentLosingStreakTrades} value={periodStreak.currentLosingStreak} tone={getStreakTone(periodStreak.streakMood)} />
+          <StreakMetric label="Max Losing Streak" trades={periodStreak.maxLosingStreakTrades} value={periodStreak.maxLosingStreak} tone={getNumberTone(-periodStreak.maxLosingStreak)} />
+          <Metric label="Worst Streak R" value={formatR(periodStreak.worstStreakR)} tone="bad" />
+          <Metric label="Worst Streak P&L" value={money(periodStreak.worstStreakPnl)} tone="bad" />
+          <Metric label="Mode" value={formatStreakMood(periodStreak.streakMood)} tone={getStreakTone(periodStreak.streakMood)} />
+        </div>
+        <p className="muted">{getStreakInterpretation(periodStreak.streakMood)}</p>
+      </section>
     </section>
   );
 }
@@ -390,6 +458,7 @@ function LastNClosedTradesSection(props: {
   readonly onLastNTradeCountChange: (count: LastNTradeCount) => Promise<void>;
 }): JSX.Element {
   const d = props.dashboard;
+  const lastNStreak: StreakAnalytics = d.lastNTrades.streakAnalytics;
   return (
     <section className="dashboard-section">
       <div className="dashboard-section-header">
@@ -414,6 +483,10 @@ function LastNClosedTradesSection(props: {
           <Metric label="Expectancy Ex-Largest" value={formatR(d.lastNTrades.expectancyWithoutLargestWinner)} tone={getNumberTone(d.lastNTrades.expectancyWithoutLargestWinner)} />
           <Metric label="Avg Winner Hold" value={formatHoldDays(d.lastNTrades.averageWinningHoldDays)} tone="good" />
           <Metric label="Avg Loser Hold" value={formatHoldDays(d.lastNTrades.averageLosingHoldDays)} tone="bad" />
+          <StreakMetric label="Current Losing Streak" trades={lastNStreak.currentLosingStreakTrades} value={lastNStreak.currentLosingStreak} tone={getStreakTone(lastNStreak.streakMood)} />
+          <StreakMetric label="Max Losing Streak" trades={lastNStreak.maxLosingStreakTrades} value={lastNStreak.maxLosingStreak} tone={getNumberTone(-lastNStreak.maxLosingStreak)} />
+          <Metric label="Worst Streak R" value={formatR(lastNStreak.worstStreakR)} tone="bad" />
+          <Metric label="Worst Streak P&L" value={money(lastNStreak.worstStreakPnl)} tone="bad" />
         </div>
         <div className="analytics-side">
           <RDistributionPanel buckets={d.lastNTrades.rDistribution} subtitle={`${d.lastNTrades.actualCount} closed trades in this sample`} title="Last N R Distribution" />
@@ -540,6 +613,33 @@ function SetupEntryMethodAnalyticsPanel(props: { readonly rows: readonly SetupEn
           <div className="setup-entry-method-row" key={`${row.setupName}-${row.entryMethodName}`}>
             <span><strong>{row.setupName}</strong></span>
             <span>{row.entryMethodName}</span>
+            <span>{row.closedTrades}</span>
+            <span>{row.winRate}%</span>
+            <span className={getToneClass(row.rExpectancy)}>{formatR(row.rExpectancy)}</span>
+            <span className="good-text">{formatR(row.averageWinningR)}</span>
+            <span className="bad-text">{formatR(row.averageLosingR)}</span>
+            <span className={getToneClass(row.medianR)}>{formatR(row.medianR)}</span>
+            <span className={getToneClass(row.pnl)}>{money(row.pnl)}</span>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function RuleAdherenceAnalyticsPanel(props: { readonly rows: readonly RuleAdherenceAnalyticsRow[] }): JSX.Element {
+  if (props.rows.every((row: RuleAdherenceAnalyticsRow) => row.closedTrades === 0)) {
+    return <section className="panel"><p className="muted">No closed trades in this period.</p></section>;
+  }
+  return (
+    <section className="panel setup-analytics-panel">
+      <div className="setup-analytics-table">
+        <div className="setup-analytics-head">
+          <span>Category</span><span>Trades</span><span>Win %</span><span>R Expectancy</span><span>Avg Win R</span><span>Avg Loss R</span><span>Median R</span><span>P&L</span>
+        </div>
+        {props.rows.map((row: RuleAdherenceAnalyticsRow) => (
+          <div className="setup-analytics-row" key={row.category}>
+            <span><strong>{row.category}</strong></span>
             <span>{row.closedTrades}</span>
             <span>{row.winRate}%</span>
             <span className={getToneClass(row.rExpectancy)}>{formatR(row.rExpectancy)}</span>
@@ -859,7 +959,7 @@ function TradesTable(props: { readonly mode: "open" | "closed"; readonly trades:
 }
 
 function TradeDetail(props: { readonly tradeId: number; readonly referenceData: ReferenceData; readonly onClose: () => void; readonly onChanged: () => Promise<void>; readonly onDeleted: () => Promise<void> }): JSX.Element {
-  const [detail, setDetail] = useState<{ readonly trade: Trade; readonly exits: readonly TradeExit[]; readonly summary: Trade["summary"]; readonly screenshots: readonly { readonly id: number; readonly type: string; readonly url: string; readonly exitId: number | null }[]; readonly checklistResponses: readonly { readonly itemId: number; readonly checked: boolean; readonly notes: string }[]; readonly review?: Record<string, string | number> } | null>(null);
+  const [detail, setDetail] = useState<{ readonly trade: Trade; readonly exits: readonly TradeExit[]; readonly summary: Trade["summary"]; readonly screenshots: readonly { readonly id: number; readonly type: string; readonly url: string; readonly exitId: number | null }[]; readonly checklistResponses: readonly { readonly itemId: number; readonly checked: boolean; readonly notes: string }[]; readonly review?: ReviewDetail } | null>(null);
   const [exitFiles, setExitFiles] = useState<readonly File[]>([]);
   const [exitFileInputKey, setExitFileInputKey] = useState(0);
   const [exitForm, setExitForm] = useState<ExitFormState>(createEmptyExitForm);
@@ -878,7 +978,7 @@ function TradeDetail(props: { readonly tradeId: number; readonly referenceData: 
   const [editExitFiles, setEditExitFiles] = useState<readonly File[]>([]);
   const [editExitForm, setEditExitForm] = useState<ExitFormState | null>(null);
   const [editExitSaving, setEditExitSaving] = useState(false);
-  const [review, setReview] = useState({ followedPlan: "1", ruleScore: "5", disciplineScore: "5", wentWell: "", wentWrong: "", lesson: "", repeatNextTime: "", avoidNextTime: "", mistakeIds: [] as number[] });
+  const [review, setReview] = useState<ReviewFormState>(createDefaultReviewForm);
   const [reviewSaveStatus, setReviewSaveStatus] = useState<ReviewSaveStatus>("idle");
   const [reviewSaveMessage, setReviewSaveMessage] = useState("");
   const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState | null>(null);
@@ -891,6 +991,9 @@ function TradeDetail(props: { readonly tradeId: number; readonly referenceData: 
     if (loaded?.trade) {
       setActiveStopLoss(String(loaded.trade.activeStopLoss));
       setCurrentPrice(loaded.trade.currentPrice === null ? "" : String(loaded.trade.currentPrice));
+      setReview(loaded.review ? createReviewFormFromDetail(loaded.review) : createDefaultReviewForm());
+      setReviewSaveStatus("idle");
+      setReviewSaveMessage("");
     }
   };
   useEffect(() => {
@@ -957,6 +1060,7 @@ function TradeDetail(props: { readonly tradeId: number; readonly referenceData: 
       </div>
     );
   }
+  const hasSavedReview: boolean = detail.review !== undefined;
   const addExitSubmit = async (event: FormEvent): Promise<void> => {
     event.preventDefault();
     if (addExitSaving) {
@@ -1347,12 +1451,13 @@ function TradeDetail(props: { readonly tradeId: number; readonly referenceData: 
               <form className="compact-form no-divider" onSubmit={reviewSubmit}>
                 <h3>Review</h3>
                 {reviewSaveMessage ? <p className={reviewSaveStatus === "error" ? "form-message error" : "form-message success"}>{reviewSaveMessage}</p> : null}
+                {!reviewSaveMessage ? <p className="muted">{hasSavedReview ? "Review saved" : "No review saved yet"}</p> : null}
                 <label><span>Followed plan</span><select value={review.followedPlan} onChange={(event) => updateReviewField({ followedPlan: event.target.value })}><option value="1">Yes</option><option value="0">No</option></select></label>
                 <Input label="Rule score 1-10" type="number" value={review.ruleScore} onChange={(value) => updateReviewField({ ruleScore: value })} />
                 <Input label="Discipline score 1-10" type="number" value={review.disciplineScore} onChange={(value) => updateReviewField({ disciplineScore: value })} />
                 <label><span>Lesson</span><textarea value={review.lesson} onChange={(event) => updateReviewField({ lesson: event.target.value })} /></label>
-                <div className="checklist">{props.referenceData.mistakeTags.map((tag) => <label className="check-row" key={tag.id}><input type="checkbox" onChange={(event) => updateReviewField({ mistakeIds: event.target.checked ? [...review.mistakeIds, tag.id] : review.mistakeIds.filter((id) => id !== tag.id) })} />{tag.label}</label>)}</div>
-                <button className="primary" disabled={reviewSaveStatus === "saving"} type="submit">{getReviewSaveButtonLabel(reviewSaveStatus)}</button>
+                <div className="checklist">{props.referenceData.mistakeTags.map((tag) => <label className="check-row" key={tag.id}><input checked={review.mistakeIds.includes(tag.id)} type="checkbox" onChange={(event) => updateReviewField({ mistakeIds: event.target.checked ? [...review.mistakeIds, tag.id] : review.mistakeIds.filter((id) => id !== tag.id) })} />{tag.label}</label>)}</div>
+                <button className="primary" disabled={reviewSaveStatus === "saving"} type="submit">{getReviewSaveButtonLabel(reviewSaveStatus, hasSavedReview)}</button>
               </form>
             </section>
           ) : null}
@@ -1508,6 +1613,35 @@ function Metric(props: { readonly label: string; readonly value: string; readonl
   return <div className={`metric ${props.tone ?? ""}`}>{props.icon}<span>{props.label}</span><strong>{props.value}</strong></div>;
 }
 
+function StreakMetric(props: {
+  readonly label: string;
+  readonly value: number;
+  readonly trades: readonly StreakTrade[];
+  readonly tone?: "good" | "bad";
+}): JSX.Element {
+  if (props.value === 0 || props.trades.length === 0) {
+    return <Metric label={props.label} value={String(props.value)} tone={props.tone} />;
+  }
+  return (
+    <div className="streak-metric" tabIndex={0}>
+      <Metric label={props.label} value={String(props.value)} tone={props.tone} />
+      <div className="streak-popover" role="tooltip">
+        <strong>{props.label} trades</strong>
+        <div className="streak-popover-list">
+          {props.trades.map((trade: StreakTrade) => (
+            <div className="streak-popover-row" key={trade.id}>
+              <span>{trade.symbol}</span>
+              <span>{formatDisplayDate(trade.closedDate)}</span>
+              <span className="bad-text">{formatR(trade.finalR)}</span>
+              <span className="bad-text">{money(trade.realizedPnl)}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Input(props: { readonly label: string; readonly value: string; readonly onChange: (value: string) => void; readonly type?: string; readonly required?: boolean; readonly step?: string }): JSX.Element {
   const step: string | undefined = props.step ?? (props.type === "number" ? "any" : undefined);
   return <label><span>{props.label}</span><input required={props.required} step={step} type={props.type ?? "text"} value={props.value} onChange={(event) => props.onChange(event.target.value)} /></label>;
@@ -1634,6 +1768,10 @@ function getNumberTone(value: number): "good" | "bad" {
   return value >= 0 ? "good" : "bad";
 }
 
+function getStreakTone(mood: StreakMood): "good" | "bad" | undefined {
+  return mood === "normal" ? "good" : mood === "review" || mood === "defensive" ? "bad" : undefined;
+}
+
 function getToneClass(value: number): string {
   return value >= 0 ? "good-text" : "bad-text";
 }
@@ -1651,6 +1789,23 @@ function formatSignedPercent(value: number): string {
 
 function formatR(value: number): string {
   return `${value.toFixed(2)}R`;
+}
+
+function formatStreakMood(mood: StreakMood): string {
+  return mood.charAt(0).toUpperCase() + mood.slice(1);
+}
+
+function getStreakInterpretation(mood: StreakMood): string {
+  if (mood === "review") {
+    return "Pause new entries and review recent trades.";
+  }
+  if (mood === "defensive") {
+    return "Reduce risk and trade only A+ setups.";
+  }
+  if (mood === "caution") {
+    return "Avoid marginal trades.";
+  }
+  return "Continue normal selectivity.";
 }
 
 function getDistributionTotal(buckets: readonly RDistributionBucket[]): number {
@@ -1822,12 +1977,12 @@ function calculateUnrealizedRFromValue(trade: Trade, currentPrice: number, remai
   return calculateUnrealizedPnlFromValue(trade.entryPrice, currentPrice, remainingQuantity) / tradeRisk;
 }
 
-function getReviewSaveButtonLabel(status: ReviewSaveStatus): string {
+function getReviewSaveButtonLabel(status: ReviewSaveStatus, hasSavedReview: boolean): string {
   if (status === "saving") {
     return "Saving...";
   }
   if (status === "saved") {
     return "Saved";
   }
-  return "Save Review";
+  return hasSavedReview ? "Save Review" : "Create Review";
 }

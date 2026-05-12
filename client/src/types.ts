@@ -113,6 +113,26 @@ export type CapitalCurvePoint = {
   readonly dailyPnl: number;
 };
 
+export type StreakMood = "normal" | "caution" | "defensive" | "review";
+
+export type StreakTrade = {
+  readonly id: number;
+  readonly symbol: string;
+  readonly closedDate: string;
+  readonly finalR: number;
+  readonly realizedPnl: number;
+};
+
+export type StreakAnalytics = {
+  readonly currentLosingStreak: number;
+  readonly maxLosingStreak: number;
+  readonly worstStreakR: number;
+  readonly worstStreakPnl: number;
+  readonly streakMood: StreakMood;
+  readonly currentLosingStreakTrades: readonly StreakTrade[];
+  readonly maxLosingStreakTrades: readonly StreakTrade[];
+};
+
 export type LastNTradesAnalytics = {
   readonly selectedN: LastNTradeCount;
   readonly actualCount: number;
@@ -127,6 +147,7 @@ export type LastNTradesAnalytics = {
   readonly averageWinningHoldDays: number;
   readonly averageLosingHoldDays: number;
   readonly rDistribution: readonly RDistributionBucket[];
+  readonly streakAnalytics: StreakAnalytics;
 };
 
 export type SetupAnalyticsRow = {
@@ -154,6 +175,17 @@ export type EntryMethodAnalyticsRow = {
 export type SetupEntryMethodAnalyticsRow = {
   readonly setupName: string;
   readonly entryMethodName: string;
+  readonly closedTrades: number;
+  readonly winRate: number;
+  readonly rExpectancy: number;
+  readonly averageWinningR: number;
+  readonly averageLosingR: number;
+  readonly medianR: number;
+  readonly pnl: number;
+};
+
+export type RuleAdherenceAnalyticsRow = {
+  readonly category: string;
   readonly closedTrades: number;
   readonly winRate: number;
   readonly rExpectancy: number;
@@ -195,6 +227,7 @@ export type Dashboard = {
   readonly largestWinnerR: number;
   readonly expectancyWithoutLargestWinner: number;
   readonly rDistribution: readonly RDistributionBucket[];
+  readonly streakAnalytics: StreakAnalytics;
   readonly expectancy: number;
   readonly maxDrawdown: number;
   readonly openTrades: number;
@@ -212,5 +245,6 @@ export type Dashboard = {
   readonly setupAnalytics: readonly SetupAnalyticsRow[];
   readonly entryMethodAnalytics: readonly EntryMethodAnalyticsRow[];
   readonly setupEntryMethodAnalytics: readonly SetupEntryMethodAnalyticsRow[];
+  readonly ruleAdherenceAnalytics: readonly RuleAdherenceAnalyticsRow[];
   readonly missingHolidayYear: number | null;
 };

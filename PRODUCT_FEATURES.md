@@ -367,8 +367,11 @@ Implemented:
 - Discipline score.
 - Mistake tags.
 - Lesson learned.
+- Existing saved reviews hydrate the drawer Review tab exactly from stored data.
+- Trades without a saved review show `No review saved yet` before creating a review.
 - Save review button states:
   - Save Review.
+  - Create Review.
   - Saving...
   - Saved.
   - Error message on failure.
@@ -463,6 +466,10 @@ Implemented:
   - Period-aware table showing combined setup and entry trigger quality.
   - Sorts combinations by R expectancy, trade count, setup name, and entry method name.
   - Helps separate setup edge from entry execution edge.
+- Rule Adherence Analytics:
+  - Period-aware table comparing Rules Followed, Rules Broken, and Not Reviewed closed trades.
+  - Uses the review `Followed plan` field as the adherence signal.
+  - Shows closed trade count, win rate, R expectancy, average winning R, average losing R, median R, and total closed-trade P&L.
 - Period R Distribution:
   - Visual horizontal bar panel.
   - Shows R distribution for fully closed trades in the selected dashboard period.
@@ -475,6 +482,12 @@ Implemented:
   - `1R to 3R`
   - `3R to 5R`
   - `> 5R`
+- Streaks & Drawdowns:
+  - Period-aware losing streak cards based on final R.
+  - Shows current losing streak, max losing streak, worst streak R, worst streak P&L, and mode.
+  - Same-day closed trades are ordered by final exit sequence so later exits can reset the current streak.
+  - Current and max losing streak cards reveal the underlying trades on hover, focus, or click.
+  - Breakeven trades do not increase or reset losing streaks.
 - Holding Time:
   - Period-aware average winner hold days.
   - Period-aware average loser hold days.
@@ -485,8 +498,10 @@ Implemented:
   - Defaults to Last 20.
   - Open and partially exited trades are excluded.
   - Multiple exits still count as one entry trade.
-  - Ordered by final exit date descending, then trade ID descending for ties.
+  - Ordered by final exit date descending, then final exit sequence descending for ties.
   - Shows P&L, win rate, R expectancy, average winning R, average losing R, expectancy excluding largest winner, average winner hold days, and average loser hold days.
+  - Includes Last N losing streak cards controlled by the Last N sample selector.
+  - Last N losing streak cards also reveal the underlying trades on hover, focus, or click.
   - Includes a separate Last N R Distribution panel.
   - Last N analytics are independent of the selected dashboard period.
   - Last N hold-day metrics are sample-based and separate from the period-based Holding Time section.

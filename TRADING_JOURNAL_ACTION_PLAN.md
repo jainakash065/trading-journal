@@ -25,6 +25,7 @@ Already implemented or substantially covered:
 - Period-aware realized equity curve.
 - Last N closed trade analytics.
 - Setup selection on trades.
+- Rule adherence analytics.
 - Rule-following review fields.
 - Mistake tagging.
 - Planned risk, actual risk, risk used, position size percentage, and open risk.
@@ -129,6 +130,10 @@ Goal: decide whether the system is emotionally and financially survivable.
      - Max drawdown in R.
      - Average drawdown in R.
      - Recovery time after drawdown.
+   - Implemented first-pass losing streak analytics:
+     - Current losing streak.
+     - Max losing streak.
+     - Worst streak R and P&L.
    - Keep rupee drawdown for account view, but use R drawdown for system-quality view.
 
 3. Position Sizing Discipline
@@ -167,7 +172,7 @@ Goal: learn when the system works and when it should be traded less.
 ## Recommended Build Order
 
 1. Setup-wise expectancy. Dashboard preview and Analytics-level setup table implemented; dedicated setup page remains future scope.
-2. Rule adherence analytics.
+2. Rule adherence analytics. Implemented as a period-aware Analytics table using Followed plan review data.
 3. Mistake impact analytics.
 4. MFE / MAE tracking.
 5. R equity curve and R drawdown.

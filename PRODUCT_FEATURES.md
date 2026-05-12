@@ -482,6 +482,11 @@ Implemented:
   - `1R to 3R`
   - `3R to 5R`
   - `> 5R`
+- Streaks & Drawdowns:
+  - Period-aware losing streak cards based on final R.
+  - Last N losing streak cards based on the selected Last 10, Last 20, or Last 50 sample.
+  - Shows current losing streak, max losing streak, worst streak R, worst streak P&L, and mode.
+  - Breakeven trades do not increase or reset losing streaks.
 - Holding Time:
   - Period-aware average winner hold days.
   - Period-aware average loser hold days.

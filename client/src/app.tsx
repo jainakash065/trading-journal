@@ -2,7 +2,7 @@ import { Activity, BarChart3, BookOpen, ChartNoAxesCombined, ChevronLeft, Chevro
 import { FormEvent, type PointerEvent, useEffect, useState } from "react";
 import { apiDelete, apiGet, apiSend, endpoints, type AppData, type ClosedTradeFilters, type ClosedTradeOutcomeFilter, type MarketHoliday, type ReferenceData, uploadScreenshots } from "./api";
 import { calculateCompletedRLevel, generateRTargetRows, type RTargetRow } from "./r-targets";
-import type { CapitalCurvePoint, Dashboard, DashboardPeriodKey, EntryMethodAnalyticsRow, LastNTradeCount, PagedTrades, RDistributionBucket, RuleAdherenceAnalyticsRow, Settings, SetupAnalyticsRow, SetupEntryMethodAnalyticsRow, Trade, TradeExit } from "./types";
+import type { CapitalCurvePoint, Dashboard, DashboardPeriodKey, EntryMethodAnalyticsRow, LastNTradeCount, PagedTrades, RDistributionBucket, RuleAdherenceAnalyticsRow, Settings, SetupAnalyticsRow, SetupEntryMethodAnalyticsRow, StreakAnalytics, StreakMood, Trade, TradeExit } from "./types";
 
 type View = "dashboard" | "analytics" | "new" | "open" | "closed" | "settings";
 type DrawerTab = "overview" | "plan" | "manage" | "exits" | "screenshots" | "review";
@@ -362,6 +362,7 @@ function AnalyticsView(props: {
         <h3>R Distribution</h3>
         <RDistributionPanel buckets={d.rDistribution} subtitle={`${getDistributionTotal(d.rDistribution)} closed trades in this period`} title="Period R Distribution" />
       </section>
+      <StreaksAndDrawdownsPanel dashboard={d} />
       <HoldingTimePanel dashboard={d} />
       <LastNClosedTradesSection dashboard={d} lastNTradeCount={props.lastNTradeCount} onLastNTradeCountChange={props.onLastNTradeCountChange} />
       <div className="split">
@@ -380,6 +381,38 @@ function HoldingTimePanel(props: { readonly dashboard: Dashboard }): JSX.Element
       <div className="metric-grid snapshot-grid">
         <Metric label="Avg Winner Hold" value={formatHoldDays(d.averageWinningHoldDays)} tone="good" />
         <Metric label="Avg Loser Hold" value={formatHoldDays(d.averageLosingHoldDays)} tone="bad" />
+      </div>
+    </section>
+  );
+}
+
+function StreaksAndDrawdownsPanel(props: { readonly dashboard: Dashboard }): JSX.Element {
+  const periodStreak: StreakAnalytics = props.dashboard.streakAnalytics;
+  const lastNStreak: StreakAnalytics = props.dashboard.lastNTrades.streakAnalytics;
+  return (
+    <section className="dashboard-section">
+      <h3>Streaks & Drawdowns</h3>
+      <div className="split">
+        <section className="panel">
+          <h2>Selected Period</h2>
+          <div className="two-col">
+            <Metric label="Current Losing Streak" value={String(periodStreak.currentLosingStreak)} tone={getStreakTone(periodStreak.streakMood)} />
+            <Metric label="Max Losing Streak" value={String(periodStreak.maxLosingStreak)} tone={getNumberTone(-periodStreak.maxLosingStreak)} />
+            <Metric label="Worst Streak R" value={formatR(periodStreak.worstStreakR)} tone="bad" />
+            <Metric label="Worst Streak P&L" value={money(periodStreak.worstStreakPnl)} tone="bad" />
+            <Metric label="Mode" value={formatStreakMood(periodStreak.streakMood)} tone={getStreakTone(periodStreak.streakMood)} />
+          </div>
+          <p className="muted">{getStreakInterpretation(periodStreak.streakMood)}</p>
+        </section>
+        <section className="panel">
+          <h2>Last N Sample</h2>
+          <div className="two-col">
+            <Metric label="Current Losing Streak" value={String(lastNStreak.currentLosingStreak)} tone={getStreakTone(lastNStreak.streakMood)} />
+            <Metric label="Max Losing Streak" value={String(lastNStreak.maxLosingStreak)} tone={getNumberTone(-lastNStreak.maxLosingStreak)} />
+            <Metric label="Worst Streak R" value={formatR(lastNStreak.worstStreakR)} tone="bad" />
+            <Metric label="Worst Streak P&L" value={money(lastNStreak.worstStreakPnl)} tone="bad" />
+          </div>
+        </section>
       </div>
     </section>
   );
@@ -1713,6 +1746,10 @@ function getNumberTone(value: number): "good" | "bad" {
   return value >= 0 ? "good" : "bad";
 }
 
+function getStreakTone(mood: StreakMood): "good" | "bad" | undefined {
+  return mood === "normal" ? "good" : mood === "review" || mood === "defensive" ? "bad" : undefined;
+}
+
 function getToneClass(value: number): string {
   return value >= 0 ? "good-text" : "bad-text";
 }
@@ -1730,6 +1767,23 @@ function formatSignedPercent(value: number): string {
 
 function formatR(value: number): string {
   return `${value.toFixed(2)}R`;
+}
+
+function formatStreakMood(mood: StreakMood): string {
+  return mood.charAt(0).toUpperCase() + mood.slice(1);
+}
+
+function getStreakInterpretation(mood: StreakMood): string {
+  if (mood === "review") {
+    return "Pause new entries and review recent trades.";
+  }
+  if (mood === "defensive") {
+    return "Reduce risk and trade only A+ setups.";
+  }
+  if (mood === "caution") {
+    return "Avoid marginal trades.";
+  }
+  return "Continue normal selectivity.";
 }
 
 function getDistributionTotal(buckets: readonly RDistributionBucket[]): number {

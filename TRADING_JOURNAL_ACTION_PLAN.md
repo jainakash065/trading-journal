@@ -130,6 +130,10 @@ Goal: decide whether the system is emotionally and financially survivable.
      - Max drawdown in R.
      - Average drawdown in R.
      - Recovery time after drawdown.
+   - Implemented first-pass losing streak analytics:
+     - Current losing streak.
+     - Max losing streak.
+     - Worst streak R and P&L.
    - Keep rupee drawdown for account view, but use R drawdown for system-quality view.
 
 3. Position Sizing Discipline

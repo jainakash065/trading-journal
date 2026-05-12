@@ -52,6 +52,16 @@ type RDistributionBucket = {
   readonly count: number;
 };
 
+type StreakMood = "normal" | "caution" | "defensive" | "review";
+
+type StreakAnalytics = {
+  readonly currentLosingStreak: number;
+  readonly maxLosingStreak: number;
+  readonly worstStreakR: number;
+  readonly worstStreakPnl: number;
+  readonly streakMood: StreakMood;
+};
+
 type RAnalytics = {
   readonly winPercentage: number;
   readonly lossPercentage: number;
@@ -80,6 +90,7 @@ type LastNTradesAnalytics = {
   readonly averageWinningHoldDays: number;
   readonly averageLosingHoldDays: number;
   readonly rDistribution: readonly RDistributionBucket[];
+  readonly streakAnalytics: StreakAnalytics;
 };
 
 type SetupAnalyticsRow = {
@@ -159,6 +170,7 @@ export type Dashboard = {
   readonly largestWinnerR: number;
   readonly expectancyWithoutLargestWinner: number;
   readonly rDistribution: readonly RDistributionBucket[];
+  readonly streakAnalytics: StreakAnalytics;
   readonly expectancy: number;
   readonly maxDrawdown: number;
   readonly openTrades: number;
@@ -238,6 +250,7 @@ export function buildDashboard(db: Database.Database, periodKey: DashboardPeriod
     largestWinnerR: rAnalytics.largestWinnerR,
     expectancyWithoutLargestWinner: rAnalytics.expectancyWithoutLargestWinner,
     rDistribution: rAnalytics.rDistribution,
+    streakAnalytics: calculateStreakAnalytics(periodTrades),
     expectancy: average(periodTrades.map((trade: ClosedTradeMetric) => trade.realizedPnl)),
     maxDrawdown: calculateBookedMaxDrawdown({ startingCapital: periodCapital.startingCapital ?? 0, exits: periodExits }),
     openTrades: getCount(db, "SELECT COUNT(*) AS count FROM trades WHERE status != 'closed'"),
@@ -381,7 +394,8 @@ function calculateLastNTradesAnalytics(trades: readonly ClosedTradeMetric[], sel
     expectancyWithoutLargestWinner: rAnalytics.expectancyWithoutLargestWinner,
     averageWinningHoldDays: rAnalytics.averageWinningHoldDays,
     averageLosingHoldDays: rAnalytics.averageLosingHoldDays,
-    rDistribution: rAnalytics.rDistribution
+    rDistribution: rAnalytics.rDistribution,
+    streakAnalytics: calculateStreakAnalytics(trades)
   };
 }
 
@@ -486,6 +500,75 @@ function createRuleAdherenceAnalyticsRow(category: string, trades: readonly Clos
     medianR: analytics.medianR,
     pnl: round(trades.reduce((total: number, trade: ClosedTradeMetric) => total + trade.realizedPnl, 0))
   };
+}
+
+function calculateStreakAnalytics(trades: readonly ClosedTradeMetric[]): StreakAnalytics {
+  const orderedTrades: readonly ClosedTradeMetric[] = [...trades].sort((first: ClosedTradeMetric, second: ClosedTradeMetric) => first.closedDate.localeCompare(second.closedDate) || first.id - second.id);
+  const currentLosingStreak: number = calculateCurrentLosingStreak(orderedTrades);
+  const worstRun = calculateWorstLosingRun(orderedTrades);
+  return {
+    currentLosingStreak,
+    maxLosingStreak: worstRun.maxLosingStreak,
+    worstStreakR: round(worstRun.worstStreakR),
+    worstStreakPnl: round(worstRun.worstStreakPnl),
+    streakMood: getStreakMood(currentLosingStreak)
+  };
+}
+
+function calculateCurrentLosingStreak(trades: readonly ClosedTradeMetric[]): number {
+  let streak = 0;
+  for (let index: number = trades.length - 1; index >= 0; index -= 1) {
+    const trade: ClosedTradeMetric = trades[index];
+    if (trade.finalR > 0) {
+      return streak;
+    }
+    if (trade.finalR < 0) {
+      streak += 1;
+    }
+  }
+  return streak;
+}
+
+function calculateWorstLosingRun(trades: readonly ClosedTradeMetric[]): { readonly maxLosingStreak: number; readonly worstStreakR: number; readonly worstStreakPnl: number } {
+  let currentStreak = 0;
+  let currentR = 0;
+  let currentPnl = 0;
+  let maxLosingStreak = 0;
+  let worstStreakR = 0;
+  let worstStreakPnl = 0;
+  trades.forEach((trade: ClosedTradeMetric) => {
+    if (trade.finalR > 0) {
+      currentStreak = 0;
+      currentR = 0;
+      currentPnl = 0;
+      return;
+    }
+    if (trade.finalR === 0) {
+      return;
+    }
+    currentStreak += 1;
+    currentR += trade.finalR;
+    currentPnl += trade.realizedPnl;
+    if (currentStreak > maxLosingStreak || currentR < worstStreakR) {
+      maxLosingStreak = currentStreak;
+      worstStreakR = currentR;
+      worstStreakPnl = currentPnl;
+    }
+  });
+  return { maxLosingStreak, worstStreakR, worstStreakPnl };
+}
+
+function getStreakMood(currentLosingStreak: number): StreakMood {
+  if (currentLosingStreak >= 5) {
+    return "review";
+  }
+  if (currentLosingStreak === 4) {
+    return "defensive";
+  }
+  if (currentLosingStreak === 3) {
+    return "caution";
+  }
+  return "normal";
 }
 
 function calculateRExpectancy(params: {

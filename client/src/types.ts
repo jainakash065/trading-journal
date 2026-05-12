@@ -113,6 +113,16 @@ export type CapitalCurvePoint = {
   readonly dailyPnl: number;
 };
 
+export type StreakMood = "normal" | "caution" | "defensive" | "review";
+
+export type StreakAnalytics = {
+  readonly currentLosingStreak: number;
+  readonly maxLosingStreak: number;
+  readonly worstStreakR: number;
+  readonly worstStreakPnl: number;
+  readonly streakMood: StreakMood;
+};
+
 export type LastNTradesAnalytics = {
   readonly selectedN: LastNTradeCount;
   readonly actualCount: number;
@@ -127,6 +137,7 @@ export type LastNTradesAnalytics = {
   readonly averageWinningHoldDays: number;
   readonly averageLosingHoldDays: number;
   readonly rDistribution: readonly RDistributionBucket[];
+  readonly streakAnalytics: StreakAnalytics;
 };
 
 export type SetupAnalyticsRow = {
@@ -206,6 +217,7 @@ export type Dashboard = {
   readonly largestWinnerR: number;
   readonly expectancyWithoutLargestWinner: number;
   readonly rDistribution: readonly RDistributionBucket[];
+  readonly streakAnalytics: StreakAnalytics;
   readonly expectancy: number;
   readonly maxDrawdown: number;
   readonly openTrades: number;

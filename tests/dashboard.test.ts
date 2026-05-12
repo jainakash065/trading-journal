@@ -270,6 +270,39 @@ describe("dashboard period metrics", () => {
     ]);
   });
 
+  it("calculates losing streaks while ignoring breakeven trades", () => {
+    const db: Database.Database = createDashboardDatabase();
+    createClosedTradeWithFinalR(db, { symbol: "LOSS1", finalR: -1, entryDate: "2026-04-01", exitDate: "2026-04-01" });
+    createClosedTradeWithFinalR(db, { symbol: "LOSS2", finalR: -0.5, entryDate: "2026-04-02", exitDate: "2026-04-02" });
+    createClosedTradeWithFinalR(db, { symbol: "EVEN", finalR: 0, entryDate: "2026-04-03", exitDate: "2026-04-03" });
+    createClosedTradeWithFinalR(db, { symbol: "LOSS3", finalR: -2, entryDate: "2026-04-04", exitDate: "2026-04-04" });
+    createClosedTradeWithFinalR(db, { symbol: "WIN", finalR: 1, entryDate: "2026-04-05", exitDate: "2026-04-05" });
+    createClosedTradeWithFinalR(db, { symbol: "LOSS4", finalR: -1, entryDate: "2026-04-06", exitDate: "2026-04-06" });
+    createClosedTradeWithFinalR(db, { symbol: "LOSS5", finalR: -1.2, entryDate: "2026-04-07", exitDate: "2026-04-07" });
+
+    const dashboard: Dashboard = buildDashboard(db, "last_month", dashboardToday);
+
+    expect(dashboard.streakAnalytics).toEqual({
+      currentLosingStreak: 2,
+      maxLosingStreak: 3,
+      worstStreakR: -3.5,
+      worstStreakPnl: -350,
+      streakMood: "normal"
+    });
+  });
+
+  it("sets streak mood from the current losing streak", () => {
+    const db: Database.Database = createDashboardDatabase();
+    createClosedTradeWithFinalR(db, { symbol: "LOSS1", finalR: -1, entryDate: "2026-04-01", exitDate: "2026-04-01" });
+    createClosedTradeWithFinalR(db, { symbol: "LOSS2", finalR: -1, entryDate: "2026-04-02", exitDate: "2026-04-02" });
+    createClosedTradeWithFinalR(db, { symbol: "LOSS3", finalR: -1, entryDate: "2026-04-03", exitDate: "2026-04-03" });
+
+    const dashboard: Dashboard = buildDashboard(db, "last_month", dashboardToday);
+
+    expect(dashboard.streakAnalytics.currentLosingStreak).toBe(3);
+    expect(dashboard.streakAnalytics.streakMood).toBe("caution");
+  });
+
   it("calculates median R for an odd number of closed trades", () => {
     const db: Database.Database = createDashboardDatabase();
     createClosedTradeWithFinalR(db, { symbol: "ODDLOSS", finalR: -1, entryDate: "2026-04-01", exitDate: "2026-04-03" });
@@ -356,6 +389,8 @@ describe("dashboard period metrics", () => {
     expect(dashboard.lastNTrades.actualCount).toBe(1);
     expect(dashboard.lastNTrades.pnl).toBe(16556.4);
     expect(dashboard.lastNTrades.averageR).toBe(11.23);
+    expect(dashboard.streakAnalytics).toEqual({ currentLosingStreak: 0, maxLosingStreak: 0, worstStreakR: 0, worstStreakPnl: 0, streakMood: "normal" });
+    expect(dashboard.lastNTrades.streakAnalytics).toEqual({ currentLosingStreak: 0, maxLosingStreak: 0, worstStreakR: 0, worstStreakPnl: 0, streakMood: "normal" });
   });
 
   it("calculates setup analytics from period closed trades", () => {
